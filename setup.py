@@ -93,6 +93,7 @@ setup(
     entry_points={
         'console_scripts': [
             # human-readable output
+            'lttng-vectorizer = lttnganalyses.cli.vectorizer:run',
             'lttng-cputop = lttnganalyses.cli.cputop:run',
             'lttng-iolatencyfreq = lttnganalyses.cli.io:runfreq',
             'lttng-iolatencystats = lttnganalyses.cli.io:runstats',
@@ -114,6 +115,7 @@ setup(
             'lttng-periodfreq = lttnganalyses.cli.periods:runfreq',
 
             # MI mode
+            'lttng-vectorizer-mi = lttnganalyses.cli.vectorizer:run_mi',
             'lttng-cputop-mi = lttnganalyses.cli.cputop:run_mi',
             'lttng-memtop-mi = lttnganalyses.cli.memtop:run_mi',
             'lttng-syscallstats-mi = lttnganalyses.cli.syscallstats:run_mi',

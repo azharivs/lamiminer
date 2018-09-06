@@ -34,6 +34,8 @@ class AnalysisConfig:
         self.proc_list = None
         self.tid_list = None
         self.cpu_list = None
+        self.count = 0
+        self.max_count = 20 #sva TODO better design approach
         self.period_def_registry = core_period.PeriodDefinitionRegistry()
 
 
@@ -296,6 +298,12 @@ class Analysis:
     def _check_analysis_end(self, ev):
         if self._conf.end_ts and ev.timestamp > self._conf.end_ts:
             self.ended = True
+        #sva limit the number of processed events
+        #sva this is to prevent unnecessarily parsing the trace file for my vectorization scripts
+        #sva TODO need a better design approach
+        self._conf.count +=1 #sva TODO: make this as a new command line argument
+        if self._conf.count > self._conf.max_count: #sva TODO
+            self.ended = True #sva TODO
 
     def _check_refresh(self, evt):
         if self._conf.refresh_period is None:

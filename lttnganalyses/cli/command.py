@@ -135,6 +135,7 @@ class Command:
 
     def _mi_create_result_table(self, table_class_name, begin, end,
                                 subtitle=None):
+
         return mi.ResultTable(self._mi_table_classes[table_class_name],
                               begin, end, subtitle)
 
