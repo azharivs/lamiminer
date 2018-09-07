@@ -59,7 +59,7 @@ setup(
     cmdclass=versioneer.get_cmdclass(),
 
     description='LTTng analyses',
-    long_description=read_file('README.rst'),
+    long_description=read_file('README.md'),
 
     url='https://github.com/lttng/lttng-analyses',
 

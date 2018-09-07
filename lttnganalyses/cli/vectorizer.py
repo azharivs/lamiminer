@@ -22,6 +22,9 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+#TODO remove unnecessary LAMI baggage 
+
+
 import operator
 from ..common import format_utils
 from .command import Command
@@ -196,9 +199,9 @@ class Vectorizer(Command):
                 feature_vector_table = self._get_feature_vector_result_table(period_data,begin_ns, end_ns, '', d, avgvec, fvec)
                 self._mi_append_result_table(feature_vector_table)             
                 #TODO call clustering on aggregate features
-                #names, clusters = get_clusters('',d,avgvec,fvec,alg_list)               
-                #feature_vector_table = self._get_clustering_result_table(period_data,begin_ns, end_ns, avgvec, fvec, names, clusters)
-                #self._mi_append_result_table(feature_vector_table)             
+                names, clusters = get_clusters('',d,avgvec,fvec,alg_list)               
+                feature_vector_table = self._get_clustering_result_table(period_data,begin_ns, end_ns, avgvec, fvec, names, clusters)
+                self._mi_append_result_table(feature_vector_table)             
                 
                 #TODO add clustering metrics result table
         
