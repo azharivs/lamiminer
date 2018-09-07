@@ -15,6 +15,13 @@ In TraceCompass you need to add your python script as a new External Analysis. N
 
 For the particular case of vectorizing and clustering VM workload you simply need to enter ```/usr/local/bin/lttng-vectorizer-mi``` with no command arguments. Remember to give it some name as well to be listed under External Analysis. Then just right click on the new analysis and select Run External Analysis.
 
+**Note:** You have to change the static path to the ```folder_list.txt``` file provided in the Python script ```vectorizer.py``` to point to your specific location.
+
+```python
+with open('/home/azhari/FROM_UBUNTU/runtime-EclipseApplication/vm_analysis/.tracing/folder_list.txt') as listF:
+    folders = listF.readlines()
+```
+
 ## Analysis Dependencies
 The ```lttng-vectorizer``` analysis depends on the TraceCompass Incubator analysis ```VMblockVectorizerAnalysis``` which is maintained [here](https://github.com/Nemati/org.eclipse.tracecompass.incubator). You need to checkout the ```vahid``` branch to get the code.
 
