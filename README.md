@@ -1,5 +1,5 @@
 # lamiminer
-Trace mining Python scripts as LAMI analysis for TraceCompass External Analysis. This repository greately borrows code from [lttng-analysis](https://github.com/lttng/lttng-analyses) and adheres to the LAMI specification detailed [here](https://github.com/lttng/lami-spec/blob/master/lami.adoc). It is encouraged that users refer to [lttng-analysis] (https://github.com/lttng/lttng-analyses) and developers refer to [LAMI documentation](https://github.com/lttng/lami-spec/blob/master/lami.adoc) for further information. 
+Trace mining Python scripts as LAMI analysis for TraceCompass External Analysis. This repository greately borrows code from [lttng-analysis](https://github.com/lttng/lttng-analyses) and adheres to the LAMI specification detailed [here](https://github.com/lttng/lami-spec/blob/master/lami.adoc). It is encouraged that users refer to [lttng-analysis](https://github.com/lttng/lttng-analyses) and developers refer to [LAMI documentation](https://github.com/lttng/lami-spec/blob/master/lami.adoc) for further information. 
 
 ## Installation
 clone the repo onto your local drive
