@@ -851,6 +851,27 @@ Please consider using the --period option.''')
 
         ap.add_argument('--stats', action='store_true', help=help)
 
+    @staticmethod
+    #sva add new arguments to vectorizer analysis
+    def _add_vectorizer_args(ap, help=None):
+        if not help:
+            help = ''
+
+        #ap.add_argument('--stats', action='store_true', help=help)
+        ap.add_argument('-t','--top-n', type=int, default=0,
+                        help='Limit samples to VMPID/CR3 among top n candidates for'
+                        ' at least one feature (default = 0: inlude all)')
+        ap.add_argument('-f','--feature', type=str, default='*',
+                        help='Only include these features given as comma separated list:'
+                        ' [f:frequency|w:wait time][t:timer|s:task|d:disk|n:network|o:other|n:non-root|r:root|i:idle]'
+                        'Example: ft,fs,fd,fn only considers frequencies of timer,task,disk,network'
+                        'Example: w*: include all average wait times'
+                        '(default=*: include all)')
+        ap.add_argument('-n','--norm', type=str, default='l2',
+                        help='Normalizing method for feature vector: l1|l2 (default =l2)')
+        #ap.add_argument('--max', type=float,
+        #                help='Filter out durations longer than max usec')
+
     def _add_arguments(self, ap):
         pass
 

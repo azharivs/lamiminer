@@ -33,6 +33,8 @@ from . import mi
 from . import termgraph
 
 from sklearn.cluster import KMeans
+from sklearn.feature_extraction.text import TfidfTransformer
+
 from enum import Enum
 import numpy as np
 
@@ -129,21 +131,21 @@ class Vectorizer(Command):
                 ('km', 'KMEANS', mi.Number),
 #                ('dbs', 'DBSCAN', mi.Number),
 #                ('agg', 'AGGLOMERATIVE', mi.Number),
-                ('avg_timer', 'Timer Wait', mi.Number),
+                #('avg_timer', 'Timer Wait', mi.Number),
                 ('freq_timer', 'Timer Freq.', mi.Number),
-                ('avg_disk', 'Disk Wait', mi.Number),
+                #('avg_disk', 'Disk Wait', mi.Number),
                 ('freq_disk', 'Disk Freq.', mi.Number),
-                ('avg_net', 'Net Wait', mi.Number),
+                #('avg_net', 'Net Wait', mi.Number),
                 ('freq_net', 'Net Freq.', mi.Number),
-                ('avg_task', 'Task Wait', mi.Number),
+                #('avg_task', 'Task Wait', mi.Number),
                 ('freq_task', 'Task Freq.', mi.Number),
-                ('avg_unknown', 'Unknown Wait', mi.Number),
+                #('avg_unknown', 'Unknown Wait', mi.Number),
                 ('freq_unknown', 'Unknown Freq.', mi.Number),
-                ('avg_nonroot', 'NonRoot Wait', mi.Number),
+                #('avg_nonroot', 'NonRoot Wait', mi.Number),
                 ('freq_nonroot', 'NonRoot Freq.', mi.Number),
-                ('avg_root', 'Root Wait', mi.Number),
+                #('avg_root', 'Root Wait', mi.Number),
                 ('freq_root', 'Root Freq.', mi.Number),
-                ('avg_idle', 'Idle Wait', mi.Number),
+                #('avg_idle', 'Idle Wait', mi.Number),
                 ('freq_idle', 'Idle Freq.', mi.Number),
             ]
         ),
@@ -167,6 +169,7 @@ class Vectorizer(Command):
 
         #register result tables in list of results 
         if self._mi_mode: #LAMI mode
+            #TODO make this file as command line input
             with open('/home/azhari/FROM_UBUNTU/runtime-EclipseApplication/vm_analysis/.tracing/folder_list.txt') as listF:
                 folders = listF.readlines()
                 folders = list(set(folders)) #remove duplicates
@@ -190,17 +193,15 @@ class Vectorizer(Command):
                         #TODO call clustering function
                         #select clustering algorithms and parameters (define an enum for this)
                         alg_list = [Clustering.KMEANS]#, Clustering.KMEANS, Clustering.KMEANS] 
-                        names, clusters = get_clusters(traceName,d,avgvec,fvec,alg_list)
+                        names, clusters, samples = get_clusters(traceName,d,avgvec,fvec,alg_list,self._args)
                         #print(names,clusters)
-                        feature_vector_table = self._get_clustering_result_table(period_data,begin_ns, end_ns, avgvec, fvec, names, clusters)
+                        feature_vector_table = self._get_clustering_result_table(period_data,begin_ns, end_ns, names, clusters, samples)
                         self._mi_append_result_table(feature_vector_table)
                         
-                #TODO add aggregate result table
                 feature_vector_table = self._get_feature_vector_result_table(period_data,begin_ns, end_ns, '', d, avgvec, fvec)
                 self._mi_append_result_table(feature_vector_table)             
-                #TODO call clustering on aggregate features
-                names, clusters = get_clusters('',d,avgvec,fvec,alg_list)               
-                feature_vector_table = self._get_clustering_result_table(period_data,begin_ns, end_ns, avgvec, fvec, names, clusters)
+                names, clusters, samples = get_clusters('',d,avgvec,fvec,alg_list,self._args)               
+                feature_vector_table = self._get_clustering_result_table(period_data,begin_ns, end_ns, names, clusters, samples)
                 self._mi_append_result_table(feature_vector_table)             
                 
                 #TODO add clustering metrics result table
@@ -255,12 +256,13 @@ class Vectorizer(Command):
 
         return result_table
 
-    def _get_clustering_result_table(self, period_data, begin_ns, end_ns, avgvec, fvec, names, clusters):
+    def _get_clustering_result_table(self, period_data, begin_ns, end_ns, names, clusters, samples):
         result_table = \
             self._mi_create_result_table(self._MI_TABLE_CLASS_CLUSTERS,
                                          begin_ns, end_ns)
         
         i=0
+        samples_arr = samples.toarray() #change from sparse matrix to numpy array so can be indexed properly
         for vmpid in names:#iterate over all VMID/PIDs
             tr_name = vmpid.split('/')[0]
             vmid_cr3 = vmpid.split('/')[1]+'/'+vmpid.split('/')[2]
@@ -269,27 +271,32 @@ class Vectorizer(Command):
                 name         = mi.String(tr_name),
                 vmcr3        = mi.String(vmid_cr3),
                 km           = mi.Number(int(clusters['KMEANS'][0][i])),
-                avg_timer    = mi.Number(avgvec[vmpid][0]),
-                freq_timer   = mi.Number(fvec[vmpid][0]),
-                avg_disk     = mi.Number(avgvec[vmpid][1]),
-                freq_disk    = mi.Number(fvec[vmpid][1]),
-                avg_net      = mi.Number(avgvec[vmpid][2]),
-                freq_net     = mi.Number(fvec[vmpid][2]),
-                avg_task     = mi.Number(avgvec[vmpid][3]),
-                freq_task    = mi.Number(fvec[vmpid][3]),
-                avg_unknown  = mi.Number(avgvec[vmpid][4]),
-                freq_unknown = mi.Number(fvec[vmpid][4]),
-                avg_nonroot  = mi.Number(avgvec[vmpid][5]),
-                freq_nonroot = mi.Number(fvec[vmpid][5]),
-                avg_root     = mi.Number(avgvec[vmpid][6]),
-                freq_root    = mi.Number(fvec[vmpid][6]),
-                avg_idle     = mi.Number(avgvec[vmpid][7]),
-                freq_idle    = mi.Number(fvec[vmpid][7])
+                #avg_timer    = mi.Number(avgvec[vmpid][0]),
+                freq_timer   = mi.Number(samples_arr[i][0]),
+                #avg_disk     = mi.Number(avgvec[vmpid][1]),
+                freq_disk    = mi.Number(samples_arr[i][1]),
+                #avg_net      = mi.Number(avgvec[vmpid][2]),
+                freq_net     = mi.Number(samples_arr[i][2]),
+                #avg_task     = mi.Number(avgvec[vmpid][3]),
+                freq_task    = mi.Number(samples_arr[i][3]),
+                #avg_unknown  = mi.Number(avgvec[vmpid][4]),
+                freq_unknown = mi.Number(samples_arr[i][4]),
+                #avg_nonroot  = mi.Number(avgvec[vmpid][5]),
+                freq_nonroot = mi.Number(samples_arr[i][5]),
+                #avg_root     = mi.Number(avgvec[vmpid][6]),
+                freq_root    = mi.Number(samples_arr[i][6]),
+                #avg_idle     = mi.Number(avgvec[vmpid][7]),
+                freq_idle    = mi.Number(samples_arr[i][7])
             )
             i += 1
 
         return result_table
 
+    #add new command line arguments for this analysis
+    def _add_arguments(self, ap):
+        Command._add_vectorizer_args(ap)
+
+    
     #implement new analysis here ...
     #def _get_someanalysis_result_table(self, period_data, begin_ns, end_ns):
 
@@ -362,21 +369,31 @@ def vectorize(avgF,freqF,traceName,d,avgvec,fvec):
           
     return d, avgvec, fvec  
 
-def get_clusters(traceName,d,avgvec,fvec,alg_list):
+def get_clusters(traceName,d,avgvec,fvec,alg_list,args):
     if traceName == '': #aggregate of all traces
         vmpid_list = d.keys()
     else:#filter out this traceName and take related VM/CR3 values and put in list
         vmpid_list = [s for s in d.keys() if s.split('/')[0] == traceName]
-        
+    
+    #start building sample matrix out of feature vectors ----------------------
+    #preprocess feature vectors (filtering)
+    #determine which features to consider (Timer/Task/etc./Freq/Wait)
+    #take samples among the top n in any of the features, 
+    #n=0 means take all samples n<0 means the bottom samples
+    
+    
     samples = np.zeros((len(vmpid_list),8))
     i = 0
-    #print(fvec)
+    #For now just use frequency as feature vector
     for vmpid in vmpid_list:
         samples[i,:] = fvec[vmpid]
-        i += 1
-    #TODO perform feature vector normalization
-    #TODO build final feature vectors: avg | freq | avg+freq
-
+        i += 1    
+     
+    #perform feature vector normalization
+    transformer = TfidfTransformer(norm=args.norm, smooth_idf=False, sublinear_tf=False, use_idf=False)
+    samples = transformer.fit_transform(samples)
+    #end building feature fectors ----------------------------------------------
+    
     cl = {}
     #populate cl = {'KMEANS':(clusterlabels[1,2,3,1], paramlist[]), ...}
     #iterate over list of clustering algorithms
@@ -384,10 +401,10 @@ def get_clusters(traceName,d,avgvec,fvec,alg_list):
         func = Clustering.switcher.value.get(alg.value)
         c, param = func(samples)
         cl[alg.name] = (c,param)
-        
-    return vmpid_list, cl
-
     
+    return vmpid_list, cl, samples
+
+
 def _run(mi_mode):
     vectorizercmd = Vectorizer(mi_mode=mi_mode)
     vectorizercmd.run() #this triggers the whole analysis part 
