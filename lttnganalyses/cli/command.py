@@ -860,11 +860,11 @@ Please consider using the --period option.''')
         #ap.add_argument('--stats', action='store_true', help=help)
         ap.add_argument('-t','--top-n', type=int, default=0,
                         help='Limit samples to VMPID/CR3 among top n candidates for'
-                        ' at least one feature (default = 0: inlude all)')
+                        ' at least one feature (default = 0: include all)')
         ap.add_argument('-f','--feature', type=str, default='*',
                         help='Only include these features given as comma separated list:'
-                        ' [f:frequency|w:wait time][t:timer|s:task|d:disk|n:network|o:other|n:non-root|r:root|i:idle]'
-                        'Example: ft,fs,fd,fn only considers frequencies of timer,task,disk,network'
+                        ' [f:frequency|w:wait time][ti:timer|ta:task|di:disk|ne:network|ot:other|no:non-root|ro:root|id:idle]'
+                        'Example: fti,fta,fdi,fne only considers frequencies of timer,task,disk,network'
                         'Example: w*: include all average wait times'
                         '(default=*: include all)')
         ap.add_argument('-n','--norm', type=str, default='l2',
