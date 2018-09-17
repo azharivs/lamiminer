@@ -858,9 +858,9 @@ Please consider using the --period option.''')
             help = ''
 
         #ap.add_argument('--stats', action='store_true', help=help)
-        ap.add_argument('-t','--top-n', type=int, default=0,
+        ap.add_argument('-t','--top', type=int, default=0,
                         help='Limit samples to VMPID/CR3 among top n candidates for'
-                        ' at least one feature (default = 0: include all)')
+                        ' at least one of the selcted features (default = 0: include all)')
         ap.add_argument('-f','--feature', type=str, default='*',
                         help='Only include these features given as comma separated list:'
                         ' [f:frequency|w:wait time][ti:timer|ta:task|di:disk|ne:network|ot:other|no:non-root|ro:root|id:idle]'
@@ -869,6 +869,13 @@ Please consider using the --period option.''')
                         '(default=*: include all)')
         ap.add_argument('-n','--norm', type=str, default='l2',
                         help='Normalizing method for feature vector: l1|l2 (default =l2)')
+        ap.add_argument('-c','--algs', type=str, default='*',
+                        help='Only include these features given as comma separated list:'
+                        ' kmeans3,dbscan,aggmax,aggmin,aggavg (agg:agglomerative)'
+                        ' When relevant, the number at the end indicates the number of clusters'
+                        'Example: kmeans3,dbscan '
+                        '   Run kmeans with 3 clusters and dbscan'
+                        '(default=kmeans3)')
         #ap.add_argument('--max', type=float,
         #                help='Filter out durations longer than max usec')
 

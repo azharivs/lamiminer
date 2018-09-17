@@ -195,13 +195,14 @@ class Vectorizer(Command):
                         #select clustering algorithms and parameters (define an enum for this)
                         alg_list = [Clustering.KMEANS]#, Clustering.KMEANS, Clustering.KMEANS] 
                         names, clusters, samples, clustering_table = get_clusters(self, traceName, d, avgvec, fvec, alg_list, self._args, begin_ns, end_ns)
-                        #print(names,clusters)
-                        self._mi_append_result_table(clustering_table)
+                        if clusters != None:
+                            self._mi_append_result_table(clustering_table)
                         
                 feature_vector_table = self._get_feature_vector_result_table(period_data,begin_ns, end_ns, '', d, avgvec, fvec)
                 self._mi_append_result_table(feature_vector_table)             
                 names, clusters, samples, clustering_table = get_clusters(self, '', d, avgvec, fvec, alg_list, self._args, begin_ns, end_ns)               
-                self._mi_append_result_table(clustering_table)             
+                if clusters != None: 
+                    self._mi_append_result_table(clustering_table)             
                 
                 #TODO add clustering metrics result table
         
@@ -369,9 +370,9 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
     #preprocess feature vectors (filtering)
     #determine which features to consider (Freq|Wait)
     #(TIMER,DISK,NET,TASK,OTHER,NON_ROOT,ROOT,IDLE)
-    #dict for holding index of feature in vector
     f_index = [] #will eventually contain index number for feature to be included in analysis
     w_index = []
+    #dict of command line arguments and the corresponding feature index to take
     index = {'fti':0,'wti':0,'fdi':1,'wdi':1,'fne':2,'wne':2,'fta':3,'wta':3,'fot':4,'wot':4,'fno':5,'wno':5,'fro':6,'wro':6,'fid':7,'wid':7}
     for feature in  args.feature.split(','):
         if feature[0] == '*':
@@ -392,37 +393,56 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
     #start with freq features
     #TODO take samples among the top n in any of the features, 
     #n=0 means take all samples n<0 means the bottom samples
-    
+    #TODO Another alternative is to take the top n AFTER normalization
+    n = args.top
+    topf = [sorted(np.array(list(fvec.values()))[:,ii])[-n] for ii in range(max(index.values())+1)] #take top n frequency feature values and store in topf
+    topw = [sorted(np.array(list(avgvec.values()))[:,ii])[-n] for ii in range(max(index.values())+1)] #take top n ...
     f_samples = np.zeros((len(vmpid_list),0))
     w_samples = np.zeros((len(vmpid_list),0))
+    filtered_vmpid_list = []
     if len(f_index) > 0:
         f_samples = np.zeros((len(vmpid_list),len(f_index)))
         i = 0
         #For now just use frequency as feature vector
         for vmpid in vmpid_list:
-            f_samples[i,:] = [ fvec[vmpid][j] for j in f_index ]
-            i += 1    
-     
+            tmp = [ True for j in f_index if fvec[vmpid][j] >= topf[j] ]
+            if any(tmp): #at least one column satisfies filter criteria
+                filtered_vmpid_list.append(vmpid)
+                f_samples[i,:] = [ fvec[vmpid][j] for j in f_index ]
+                i += 1    
+        f_samples = f_samples[0:i] #eliminate zero rows corresponding to filtered out data
         #perform feature vector normalization
-        f_transformer = TfidfTransformer(norm=args.norm, smooth_idf=False, sublinear_tf=False, use_idf=False)
-        f_samples = f_transformer.fit_transform(f_samples)
+        print(traceName,i)
+        if i > 0: #at least one sample remains after filtering
+            f_transformer = TfidfTransformer(norm=args.norm, smooth_idf=False, sublinear_tf=False, use_idf=False)
+            f_samples = f_transformer.fit_transform(f_samples)
+        else:
+            f_index = [] #act as if no features are selected
 
     #proceed to average wait time features
     #TODO take samples among the top n in any of the features, 
     #n=0 means take all samples n<0 means the bottom samples
-    
     if len(w_index) > 0:
         w_samples = np.zeros((len(vmpid_list),len(w_index)))
         i = 0
         #For now just use frequency as feature vector
         for vmpid in vmpid_list:
-            w_samples[i,:] = [ avgvec[vmpid][j] for j in w_index ]
-            i += 1    
-     
+            tmp = [ True for j in w_index if avgvec[vmpid][j] >= topw[j] ]
+            if any(tmp): #at least one column satisfies filter criteria
+                filtered_vmpid_list.append(vmpid)
+                w_samples[i,:] = [ avgvec[vmpid][j] for j in w_index ]
+                i += 1    
+        w_samples = w_samples[0:i] #eliminate zero rows corresponding to filtered out data     
         #perform feature vector normalization
-        w_transformer = TfidfTransformer(norm=args.norm, smooth_idf=False, sublinear_tf=False, use_idf=False)
-        w_samples = w_transformer.fit_transform(w_samples)
+        if i > 0:
+            w_transformer = TfidfTransformer(norm=args.norm, smooth_idf=False, sublinear_tf=False, use_idf=False)
+            w_samples = w_transformer.fit_transform(w_samples)
+        else:
+            w_index = []
 
+    if len(w_index) == 0 and len(f_index) == 0: #no samples made it through the filters
+        return None, None, None, None
+        
     #now form aggregate sample matrix and re-normalize
     if len(w_index) == 0:
         samples = f_samples.toarray()
@@ -438,6 +458,7 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
     cl = {}
     #populate cl = {'KMEANS':(clusterlabels[1,2,3,1], paramlist[]), ...}
     #iterate over list of clustering algorithms
+    #TODO: generalize clustering algoerithms and take as command line options
     for alg in alg_list: 
         func = Clustering.switcher.value.get(alg.value)
         c, param = func(samples)
@@ -473,7 +494,7 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
     #populate rows
     i=0
     samples_arr = samples.toarray() #change from sparse matrix to numpy array so can be indexed properly
-    for vmpid in vmpid_list:#iterate over all VMID/PIDs
+    for vmpid in filtered_vmpid_list:#iterate over all VMID/PIDs
         tr_name = vmpid.split('/')[0]
         vmid_cr3 = vmpid.split('/')[1]+'/'+vmpid.split('/')[2]
         row_tuple = [
@@ -488,7 +509,7 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
         i += 1   
     
     #create result table end <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-    return vmpid_list, cl, samples, result_table
+    return filtered_vmpid_list, cl, samples, result_table
 
 
 def _run(mi_mode):
