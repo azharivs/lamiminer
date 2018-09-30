@@ -40,10 +40,9 @@ import numpy as np
 
 #performs kmeans clustering on a list of samples
 #inparams: a dict of input parameters
-#TODO set number of clusters via parameter
 def kmeans_clustering(samples, inparams):
     n = min (inparams['n_clusters'], samples.shape[0]) #number of clusters never larger than number of samples
-    cl = KMeans(n_clusters=n, init='k-means++', max_iter=100, n_init=1, random_state=None)
+    cl = KMeans(n_clusters=n, init='k-means++', max_iter=300, n_init=10, random_state=None)
     cl.fit(samples)
     outparams = []
     #print(cl)
@@ -259,6 +258,7 @@ class Vectorizer(Command):
 
         return result_table
 
+    #TODO remove no longer used
     def _get_clustering_result_table(self, period_data, begin_ns, end_ns, names, clusters, samples, table_name):
         result_table = \
             self._mi_create_result_table(table_name,
@@ -393,42 +393,60 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
             if feature[0] == 'w':
                 w_index.append(index[feature])
     
-    #start with freq features
+
     #take samples among the top n in any of the features, 
     #n=0 means take all samples (TODO not tested): n<0 means the bottom samples 
     #TODO Another alternative is to take the top n AFTER normalization
     n = args.top
     topf = [sorted(np.array(list(fvec.values()))[:,ii])[-n] for ii in range(max(index.values())+1)] #take top n frequency feature values and store in topf
-    topw = [sorted(np.array(list(avgvec.values()))[:,ii])[-n] for ii in range(max(index.values())+1)] #take top n ...
+    topw = [sorted(np.array(list(avgvec.values()))[:,ii])[-n] for ii in range(max(index.values())+1)] #take top n average wait ...
     f_samples = np.zeros((len(vmpid_list),0))
     w_samples = np.zeros((len(vmpid_list),0))
     filtered_vmpid_list = []
+    if len(w_index) > 0:
+        w_samples = np.zeros((len(vmpid_list),len(w_index)))
     if len(f_index) > 0:
         f_samples = np.zeros((len(vmpid_list),len(f_index)))
+
+    #start with freq features
+    if len(f_index) > 0:
         i = 0
-        #For now just use frequency as feature vector
         for vmpid in vmpid_list:
             tmp = [ True for j in f_index if fvec[vmpid][j] >= topf[j] ]
-            if any(tmp): #at least one column satisfies filter criteria
+            if any(tmp): #at least one column in freq vector satisfies filter criteria
                 filtered_vmpid_list.append(vmpid)
                 f_samples[i,:] = [ fvec[vmpid][j] for j in f_index ]
-                i += 1    
+                if len(w_index) > 0:
+                    w_samples[i,:] = [ avgvec[vmpid][j] for j in w_index ]
+                i += 1
+            elif len(w_index) > 0: #no column in freq vector satisfies filter criteria
+                tmp = [ True for j in w_index if avgvec[vmpid][j] >= topw[j] ]
+                if any(tmp): #but at least one column in wait vector satisfies filter criteria
+                    filtered_vmpid_list.append(vmpid)
+                    f_samples[i,:] = [ fvec[vmpid][j] for j in f_index ]
+                    w_samples[i,:] = [ avgvec[vmpid][j] for j in w_index ]
+                    i += 1    
         f_samples = f_samples[0:i] #eliminate zero rows corresponding to filtered out data
+        if len(w_index) > 0:
+            w_samples = w_samples[0:i] #eliminate zero rows corresponding to filtered out data     
         #perform feature vector normalization
         #print(traceName,i)
         if i > 0: #at least one sample remains after filtering
             f_transformer = TfidfTransformer(norm=args.norm, smooth_idf=False, sublinear_tf=False, use_idf=False)
             f_samples = f_transformer.fit_transform(f_samples)
+            if len(w_index) > 0:
+                w_transformer = TfidfTransformer(norm=args.norm, smooth_idf=False, sublinear_tf=False, use_idf=False)
+                w_samples = w_transformer.fit_transform(w_samples)
+            else:
+                w_index = [] #act as if no features are selected
         else:
-            f_index = [] #act as if no features are selected
+            f_index = []
+            w_index = []
 
-    #proceed to average wait time features
-    #TODO take samples among the top n in any of the features, 
+    #Only average wait time features were selected
     #n=0 means take all samples n<0 means the bottom samples
-    if len(w_index) > 0:
-        w_samples = np.zeros((len(vmpid_list),len(w_index)))
+    elif len(w_index) > 0:
         i = 0
-        #For now just use frequency as feature vector
         for vmpid in vmpid_list:
             tmp = [ True for j in w_index if avgvec[vmpid][j] >= topw[j] ]
             if any(tmp): #at least one column satisfies filter criteria
@@ -443,7 +461,7 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
         else:
             w_index = []
 
-    filtered_vmpid_list = list(set(filtered_vmpid_list))
+    #filtered_vmpid_list = list(set(filtered_vmpid_list))
     if len(w_index) == 0 and len(f_index) == 0: #no samples made it through the filters
         return None, None, None, None
         
@@ -507,7 +525,7 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
 
     #populate rows
     i=0
-    samples_arr = samples.toarray() #change from sparse matrix to numpy array so can be indexed properly
+    samples_arr = samples.toarray() #change from sparse matrix to numpy array so can be indexed properly       
     for vmpid in filtered_vmpid_list:#iterate over all VMID/PIDs
         tr_name = vmpid.split('/')[0]
         vmid_cr3 = vmpid.split('/')[1]+'/'+vmpid.split('/')[2]
