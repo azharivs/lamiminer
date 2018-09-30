@@ -39,9 +39,10 @@ from enum import Enum
 import numpy as np
 
 #performs kmeans clustering on a list of samples
+#inparams: a dict of input parameters
 #TODO set number of clusters via parameter
-def kmeans_clustering(samples):
-    n = min (10, samples.shape[0]) #number of clusters never larger than number of samples
+def kmeans_clustering(samples, inparams):
+    n = min (inparams['n_clusters'], samples.shape[0]) #number of clusters never larger than number of samples
     cl = KMeans(n_clusters=n, init='k-means++', max_iter=100, n_init=1, random_state=None)
     cl.fit(samples)
     outparams = []
@@ -167,6 +168,11 @@ class Vectorizer(Command):
         #determine period of analysis 
         begin_ns = period_data.period.begin_evt.timestamp 
         
+        #populate list of clustering algorithms
+        
+        alg_list = create_alg_list(self._args)
+#       alg_list = [ (Clustering.KMEANS,{'n_clusters':3,...},KMEANS_3),(),...]
+            
 
         #register result tables in list of results 
         if self._mi_mode: #LAMI mode
@@ -191,9 +197,6 @@ class Vectorizer(Command):
                         #no clustering just output feature vectors
                         feature_vector_table = self._get_feature_vector_result_table(period_data,begin_ns, end_ns, traceName, d, avgvec, fvec)
                         self._mi_append_result_table(feature_vector_table)
-                        #TODO call clustering function
-                        #select clustering algorithms and parameters (define an enum for this)
-                        alg_list = [Clustering.KMEANS]#, Clustering.KMEANS, Clustering.KMEANS] 
                         names, clusters, samples, clustering_table = get_clusters(self, traceName, d, avgvec, fvec, alg_list, self._args, begin_ns, end_ns)
                         if clusters != None:
                             self._mi_append_result_table(clustering_table)
@@ -391,8 +394,8 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
                 w_index.append(index[feature])
     
     #start with freq features
-    #TODO take samples among the top n in any of the features, 
-    #n=0 means take all samples n<0 means the bottom samples
+    #take samples among the top n in any of the features, 
+    #n=0 means take all samples (TODO not tested): n<0 means the bottom samples 
     #TODO Another alternative is to take the top n AFTER normalization
     n = args.top
     topf = [sorted(np.array(list(fvec.values()))[:,ii])[-n] for ii in range(max(index.values())+1)] #take top n frequency feature values and store in topf
@@ -412,7 +415,7 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
                 i += 1    
         f_samples = f_samples[0:i] #eliminate zero rows corresponding to filtered out data
         #perform feature vector normalization
-        print(traceName,i)
+        #print(traceName,i)
         if i > 0: #at least one sample remains after filtering
             f_transformer = TfidfTransformer(norm=args.norm, smooth_idf=False, sublinear_tf=False, use_idf=False)
             f_samples = f_transformer.fit_transform(f_samples)
@@ -440,6 +443,7 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
         else:
             w_index = []
 
+    filtered_vmpid_list = list(set(filtered_vmpid_list))
     if len(w_index) == 0 and len(f_index) == 0: #no samples made it through the filters
         return None, None, None, None
         
@@ -455,23 +459,33 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
     samples = transformer.fit_transform(samples)
     #build sample matrix out of feature vectors end <<<<<<<<<<<<<<<<<<<<<<<<<<<
     
-    cl = {}
-    #populate cl = {'KMEANS':(clusterlabels[1,2,3,1], paramlist[]), ...}
-    #iterate over list of clustering algorithms
-    #TODO: generalize clustering algoerithms and take as command line options
-    for alg in alg_list: 
-        func = Clustering.switcher.value.get(alg.value)
-        c, param = func(samples)
-        cl[alg.name] = (c,param)
     
-    #create result table begin >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+    
+    #compute clustering and create result table begin >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     #construct table structure and columns
     col_infos = [
             ('name', 'Experiment', mi.String),
             ('vmcr3', 'VMID/CR3', mi.String),
-            ('km', 'KMEANS', mi.Number), #TODO make it generic to treat a list of arbitrary clusterings
+#            ('km', 'KMEANS', mi.Number), #TODO make it generic to treat a list of arbitrary clusterings
             ]
     
+    #compute clusterings 
+    #populate cl = {'KMEANS':(clusterlabels[1,2,3,1], paramlist[]), ...}
+    #iterate over list of clustering algorithms
+    #TODO: generalize clustering algorithms and take as command line options
+    cl = {}
+    i = 0;
+    for alg in alg_list: 
+        func = Clustering.switcher.value.get(alg[0].value)
+        c, param = func(samples,alg[1]) #execute clustering algorithm over samples with alg[1] as inparams
+        cl[ alg[2] ] = (c,param)
+        col_infos.append((
+            'alg{}'.format(i),
+            alg[2],
+            mi.Number
+        ))
+        i += 1
+        
     i=0
     for f in f_index:
         col_infos.append((
@@ -500,17 +514,36 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
         row_tuple = [
             mi.String(tr_name),
             mi.String(vmid_cr3),
-            mi.Number(int(cl['KMEANS'][0][i])),
         ]
         
+        for alg in alg_list:
+            row_tuple.append( mi.Number( int(cl[ alg[2] ][0][i]) ) )
+                    
         for col in range(len(f_index)+len(w_index)):
             row_tuple.append(mi.Number(samples_arr[i][col]))
         result_table.append_row_tuple(tuple(row_tuple))
         i += 1   
-    
-    #create result table end <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    #compute clustering and create result table end <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     return filtered_vmpid_list, cl, samples, result_table
 
+
+#creates custom names for various clustering algorithms based on their input parameters
+#TODO to be modified for each new algorithm
+def create_alg_list(args):
+    tmp = []
+    for arg in args.algs.split(','):
+        if arg[0:6] == 'kmeans':
+            alg = Clustering.KMEANS
+            params = {'n_clusters':int(arg[6:])} #number of clusters
+            col_name = alg.name + '_' + arg[6:]
+#        elif args == 'dbscan':
+#        elif args == 'aggmin':
+#        elif args == 'aggavg':
+#        elif args == 'aggmax':
+#        else:
+        tmp.append( (alg,params,col_name) )    
+
+    return tmp
 
 def _run(mi_mode):
     vectorizercmd = Vectorizer(mi_mode=mi_mode)
