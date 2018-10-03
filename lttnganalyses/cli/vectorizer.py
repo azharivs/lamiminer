@@ -23,6 +23,8 @@
 # SOFTWARE.
 
 # Author 2018 - Seyed Vahid Azhari <azharivs@gmail.com>
+# sample command line options 
+# --top 4 --feature fti,fdi,fta,fne,wti,wdi,wta,wne --algs kmeans3,kmeans4,kmeans5,kmeans6,kmeans7
 
 #TODO remove unnecessary LAMI baggage 
 import operator
@@ -34,6 +36,7 @@ from . import termgraph
 
 from sklearn.cluster import KMeans
 from sklearn.feature_extraction.text import TfidfTransformer
+from sklearn.metrics import silhouette_samples, silhouette_score
 
 from enum import Enum
 import numpy as np
@@ -52,11 +55,27 @@ def kmeans_clustering(samples, inparams):
     cl.fit(samples)
     d = [sqdist(samples.toarray()[i],cl.cluster_centers_[cl.labels_[i]]) for i in range(samples.shape[0])]
     c_sse = np.zeros(len(cl.cluster_centers_))
+    c_n = np.zeros(len(cl.cluster_centers_)) #number of samples in each cluster
+    cc = samples.toarray().mean(axis=0) #overall centroid
+    ssb = 0
+    for i in range(samples.shape[0]):
+        c_n[cl.labels_[i]] += 1 
     for c in range(len(cl.cluster_centers_)): #for all clusters
+        ssb += c_n[c]*sqdist(cl.cluster_centers_[c],cc) # compute total SSB
         for i in range(samples.shape[0]):
             if cl.labels_[i] == c:
                 c_sse[c] += d[i]
-    outparams = {'centroids':cl.cluster_centers_, 'total sse':cl.inertia_, 'cluster sse':c_sse, 'squared distance':d}
+#    print(cc,ssb)
+    #TODO compute point wise and overall silhouette coeff
+#    print("labels:",cl.labels_)
+#    print("samples:",samples.shape)
+    s_sil = -1*np.ones(samples.shape[0]) #initialize to all negative (worst value)
+    sil = -1
+    if samples.shape[0] > n: #if samples more than clusters 
+        s_sil = silhouette_samples(samples.toarray(),cl.labels_)
+        sil = silhouette_score(samples.toarray(),cl.labels_)
+#    print("sil",s_sil,sil)
+    outparams = {'sample silhouette':s_sil,'total silhouette':sil,'total ssb':ssb,'cluster size':c_n,'centroids':cl.cluster_centers_, 'total sse':cl.inertia_, 'cluster sse':c_sse, 'squared distance':d}
     return cl.labels_, outparams 
     
 #TODO
@@ -399,6 +418,7 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
         if len(w_index) > 0:
             w_samples = w_samples[0:i] #eliminate zero rows corresponding to filtered out data     
         #perform feature vector normalization
+        #TODO add option for no normalization
         #print(traceName,i)
         if i > 0: #at least one sample remains after filtering
             f_transformer = TfidfTransformer(norm=args.norm, smooth_idf=False, sublinear_tf=False, use_idf=False)
@@ -424,6 +444,7 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
                 i += 1    
         w_samples = w_samples[0:i] #eliminate zero rows corresponding to filtered out data     
         #perform feature vector normalization
+        #TODO add option for no normalization
         if i > 0:
             w_transformer = TfidfTransformer(norm=args.norm, smooth_idf=False, sublinear_tf=False, use_idf=False)
             w_samples = w_transformer.fit_transform(w_samples)
@@ -441,6 +462,7 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
     else:
         samples = np.append(f_samples.toarray(),w_samples.toarray(),1)
     
+    #TODO add option for no normalization
     transformer = TfidfTransformer(norm=args.norm, smooth_idf=False, sublinear_tf=False, use_idf=False)
     samples = transformer.fit_transform(samples)
     #build sample matrix out of feature vectors end <<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -476,6 +498,11 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
         col_infos.append((
             'sse{}'.format(i),
             'CL SSE',
+            mi.Number
+        ))
+        col_infos.append((
+            'sil{}'.format(i),
+            'Silhouette',
             mi.Number
         ))
         i += 1
@@ -517,19 +544,52 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
             row_tuple.append( mi.Number( dist[i] ) ) #add sample distance to cluster center
             c_sse = cl[ alg[2] ][1]['cluster sse']
             row_tuple.append( mi.Number( c_sse[label] ) ) #add cluster SSE for this sample's cluster
+            s_sil = cl[ alg[2] ][1]['sample silhouette'][i]
+            row_tuple.append( mi.Number( s_sil ) ) #add sample silhouette for this sample
                     
         for col in range(len(f_index)+len(w_index)):
             row_tuple.append(mi.Number(samples_arr[i][col]))
         result_table.append_row_tuple(tuple(row_tuple))
         i += 1   
 
-    #add last row containing clustering SSE 
+    #add row containing clustering SSE 
     row_tuple = [
         mi.String('Total SSE'),
         mi.String('N/A'),
     ]
     for alg in alg_list:
         row_tuple.append( mi.Number( float(cl[ alg[2] ][1]['total sse']) ) ) #[1:outparams][1:inertia/SSE] take inertia among all samples
+        row_tuple.append( mi.Number( 0 ) )
+        row_tuple.append( mi.Number( 0 ) )
+        row_tuple.append( mi.Number( 0 ) )
+
+    for col in range(len(f_index)+len(w_index)):
+        row_tuple.append(mi.Number(0))
+    result_table.append_row_tuple(tuple(row_tuple))
+    
+    #add row containing clustering total SSB
+    row_tuple = [
+        mi.String('Total SSB'),
+        mi.String('N/A'),
+    ]
+    for alg in alg_list:
+        row_tuple.append( mi.Number( float(cl[ alg[2] ][1]['total ssb']) ) ) #[1:outparams][1:inertia/SSE] take inertia among all samples
+        row_tuple.append( mi.Number( 0 ) )
+        row_tuple.append( mi.Number( 0 ) )
+        row_tuple.append( mi.Number( 0 ) )
+
+    for col in range(len(f_index)+len(w_index)):
+        row_tuple.append(mi.Number(0))
+    result_table.append_row_tuple(tuple(row_tuple))
+    
+    #add row containing clustering total silhouette
+    row_tuple = [
+        mi.String('Total Silhouette'),
+        mi.String('N/A'),
+    ]
+    for alg in alg_list:
+        row_tuple.append( mi.Number( float(cl[ alg[2] ][1]['total silhouette']) ) ) #[1:outparams][1:inertia/SSE] take inertia among all samples
+        row_tuple.append( mi.Number( 0 ) )
         row_tuple.append( mi.Number( 0 ) )
         row_tuple.append( mi.Number( 0 ) )
 
