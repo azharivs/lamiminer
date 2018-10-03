@@ -33,6 +33,7 @@ from .command import Command
 from ..core import vectorizer
 from . import mi
 from . import termgraph
+import math
 
 from sklearn.cluster import KMeans
 from sklearn.feature_extraction.text import TfidfTransformer
@@ -41,12 +42,46 @@ from sklearn.metrics import silhouette_samples, silhouette_score
 from enum import Enum
 import numpy as np
 import functools
+import matplotlib.pyplot as plt
+from matplotlib import cm
 
 #compute squared euclidean distance between two arrays
 #sample is a numpy array
 def sqdist(sample,centroid):
     return functools.reduce(lambda x,y:x+y, (sample-centroid)*(sample-centroid))
 
+#TODO show the similarity matrix of the clustered data
+def show_sim_matrix(samples,labels):
+    #sort samples with respect to labels
+    order = np.argsort(labels).tolist() 
+    #compute similarity matrix
+    d = np.zeros((samples.shape[0],samples.shape[0]))
+    d_min = 0
+    d_max = 0
+    for i in order:
+        for j in order:
+            d[i][j] = math.sqrt(sqdist(samples.toarray()[i],samples.toarray()[j]))
+            if d[i][j] < d_min:
+                d_min = d[i][j]
+            if d[i][j] > d_max:
+                d_max = d[i][j]
+            
+    for i in order:
+        for j in order:
+            d[i][j] = 1-(d[i][j]-d_min)/(d_max-d_min)
+    #plot it
+#    plt.matshow(d)
+#    plt.show()    
+    fig, ax = plt.subplots()
+    cax = ax.imshow(d, interpolation='nearest', cmap=cm.coolwarm)
+    ax.set_title('Similarity Matrix')
+
+    # Add colorbar, make sure to specify tick locations to match desired ticklabels
+    cbar = fig.colorbar(cax, ticks=[0, 0.5, 1])
+    cbar.ax.set_yticklabels(['< 0', '0.5', '> 1'])  # vertically oriented colorbar
+    plt.show()
+    return 
+    
 #performs kmeans clustering on a list of samples
 #inparams: a dict of input parameters
 def kmeans_clustering(samples, inparams):
@@ -467,8 +502,7 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
     samples = transformer.fit_transform(samples)
     #build sample matrix out of feature vectors end <<<<<<<<<<<<<<<<<<<<<<<<<<<
     
-    
-    
+   
     #compute clustering and create result table begin >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     #construct table structure and columns
     col_infos = [
@@ -485,6 +519,11 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
         func = Clustering.switcher.value.get(alg[0].value)
         c, param = func(samples,alg[1]) #execute clustering algorithm over samples with alg[1] as inparams
         cl[ alg[2] ] = (c,param)
+
+        #plot similarity matrix
+        if traceName == '':
+            show_sim_matrix(samples,c)
+
         col_infos.append((
             'alg{}'.format(i),
             alg[2],
