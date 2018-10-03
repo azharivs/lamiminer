@@ -22,9 +22,9 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+# Author 2018 - Seyed Vahid Azhari <azharivs@gmail.com>
+
 #TODO remove unnecessary LAMI baggage 
-
-
 import operator
 from ..common import format_utils
 from .command import Command
@@ -37,14 +37,31 @@ from sklearn.feature_extraction.text import TfidfTransformer
 
 from enum import Enum
 import numpy as np
+import functools
+
+#compute squared euclidean distance between two arrays
+#sample is a numpy array
+def sqdist(sample,centroid):
+    return functools.reduce(lambda x,y:x+y, (sample-centroid)*(sample-centroid))
 
 #performs kmeans clustering on a list of samples
 #inparams: a dict of input parameters
 def kmeans_clustering(samples, inparams):
     n = min (inparams['n_clusters'], samples.shape[0]) #number of clusters never larger than number of samples
-    cl = KMeans(n_clusters=n, init='k-means++', max_iter=300, n_init=10, random_state=None)
+    cl = KMeans(n_clusters=n, init='k-means++', max_iter=300, n_init=100, random_state=None)
     cl.fit(samples)
-    outparams = []
+    #TODO compute Euclidean distance for each point to centroid
+    d = [sqdist(samples.toarray()[i],cl.cluster_centers_[cl.labels_[i]]) for i in range(samples.shape[0])]
+#    print(d)
+    #TODO compute cluster SSE
+    c_sse = np.zeros(len(cl.cluster_centers_))
+    for c in range(len(cl.cluster_centers_)): #for all clusters
+        for i in range(samples.shape[0]):
+            if cl.labels_[i] == c:
+                c_sse[c] += d[i]
+#    print(c_sse)
+    outparams = {'centroids':cl.cluster_centers_, 'total sse':cl.inertia_, 'cluster sse':c_sse, 'squared distance':d}
+#    print(outparams)
     #print(cl)
     #print(samples)
     #print(cl.labels_)
@@ -461,7 +478,6 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
         else:
             w_index = []
 
-    #filtered_vmpid_list = list(set(filtered_vmpid_list))
     if len(w_index) == 0 and len(f_index) == 0: #no samples made it through the filters
         return None, None, None, None
         
@@ -484,7 +500,6 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
     col_infos = [
             ('name', 'Experiment', mi.String),
             ('vmcr3', 'VMID/CR3', mi.String),
-#            ('km', 'KMEANS', mi.Number), #TODO make it generic to treat a list of arbitrary clusterings
             ]
     
     #compute clusterings 
@@ -494,12 +509,23 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
     cl = {}
     i = 0;
     for alg in alg_list: 
+        print(traceName)
         func = Clustering.switcher.value.get(alg[0].value)
         c, param = func(samples,alg[1]) #execute clustering algorithm over samples with alg[1] as inparams
         cl[ alg[2] ] = (c,param)
         col_infos.append((
             'alg{}'.format(i),
             alg[2],
+            mi.Number
+        ))
+        col_infos.append((
+            'd{}'.format(i),
+            'SqDist',
+            mi.Number
+        ))
+        col_infos.append((
+            'sse{}'.format(i),
+            'CL SSE',
             mi.Number
         ))
         i += 1
@@ -535,12 +561,32 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
         ]
         
         for alg in alg_list:
-            row_tuple.append( mi.Number( int(cl[ alg[2] ][0][i]) ) )
+            label = int(cl[ alg[2] ][0][i])
+            row_tuple.append( mi.Number( label ) ) #add cluster label
+            dist = cl[ alg[2] ][1]['squared distance']
+            row_tuple.append( mi.Number( dist[i] ) ) #add sample distance to cluster center
+            c_sse = cl[ alg[2] ][1]['cluster sse']
+            row_tuple.append( mi.Number( c_sse[label] ) ) #add cluster SSE for this sample's cluster
                     
         for col in range(len(f_index)+len(w_index)):
             row_tuple.append(mi.Number(samples_arr[i][col]))
         result_table.append_row_tuple(tuple(row_tuple))
         i += 1   
+
+    #add last row containing clustering SSE 
+    row_tuple = [
+        mi.String('Total SSE'),
+        mi.String('N/A'),
+    ]
+    for alg in alg_list:
+        row_tuple.append( mi.Number( float(cl[ alg[2] ][1]['total sse']) ) ) #[1:outparams][1:inertia/SSE] take inertia among all samples
+        row_tuple.append( mi.Number( 0 ) )
+        row_tuple.append( mi.Number( 0 ) )
+
+    for col in range(len(f_index)+len(w_index)):
+        row_tuple.append(mi.Number(0))
+    result_table.append_row_tuple(tuple(row_tuple))
+    
     #compute clustering and create result table end <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     return filtered_vmpid_list, cl, samples, result_table
 
