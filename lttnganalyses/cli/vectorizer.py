@@ -50,21 +50,13 @@ def kmeans_clustering(samples, inparams):
     n = min (inparams['n_clusters'], samples.shape[0]) #number of clusters never larger than number of samples
     cl = KMeans(n_clusters=n, init='k-means++', max_iter=300, n_init=100, random_state=None)
     cl.fit(samples)
-    #TODO compute Euclidean distance for each point to centroid
     d = [sqdist(samples.toarray()[i],cl.cluster_centers_[cl.labels_[i]]) for i in range(samples.shape[0])]
-#    print(d)
-    #TODO compute cluster SSE
     c_sse = np.zeros(len(cl.cluster_centers_))
     for c in range(len(cl.cluster_centers_)): #for all clusters
         for i in range(samples.shape[0]):
             if cl.labels_[i] == c:
                 c_sse[c] += d[i]
-#    print(c_sse)
     outparams = {'centroids':cl.cluster_centers_, 'total sse':cl.inertia_, 'cluster sse':c_sse, 'squared distance':d}
-#    print(outparams)
-    #print(cl)
-    #print(samples)
-    #print(cl.labels_)
     return cl.labels_, outparams 
     
 #TODO
@@ -115,8 +107,6 @@ class Vectorizer(Command):
             _MI_TABLE_CLASS_FEATURE_VECTOR,
             'Avg. Duration and Freq. of Wait/Run Periods', [#result table tab title in tracecompass (TC)
                 #1st item:name of python variable holding the value for this column | 2nd:Column title | 3rd:Type of object which is the value of the column
-                #TODO add a VM class as well
-                #('path','Path', mi.String),
                 ('name', 'Experiment', mi.String),
                 ('vmcr3', 'VMID/CR3', mi.String),
  #               ('cluster', 'Cluster', mi.Number),
@@ -142,8 +132,6 @@ class Vectorizer(Command):
             _MI_TABLE_CLASS_CLUSTERS,
             'Clusters', [#result table tab title in tracecompass (TC)
                 #1st item:name of python variable holding the value for this column | 2nd:Column title | 3rd:Type of object which is the value of the column
-                #TODO add a VM class as well
-                #('path','Path', mi.String),
                 ('name', 'Experiment', mi.String),
                 ('vmcr3', 'VMID/CR3', mi.String),
                 ('km', 'KMEANS', mi.Number),
@@ -197,12 +185,9 @@ class Vectorizer(Command):
                 folders = listF.readlines()
                 folders = list(set(folders)) #remove duplicates
                 folders = [fl.replace('\n','') for fl in folders] #remove newline at the end
-                #folders = [fl.replace('(','\(') for fl in folders] #inset escape character
-                #folders = [fl.replace(')','\)') for fl in folders] #inset escape character
                 d = {}
                 avgvec = {}
                 fvec = {}
-                #TODO compute per tracefile result tables
                 for folder in folders:
                     traceName = folder.split('/')[-2] #extract name of tracefile
                     avgFileName = folder + 'avgdur.vector'
@@ -222,12 +207,9 @@ class Vectorizer(Command):
                 names, clusters, samples, clustering_table = get_clusters(self, '', d, avgvec, fvec, alg_list, self._args, begin_ns, end_ns)               
                 if clusters != None: 
                     self._mi_append_result_table(clustering_table)             
-                
-                #TODO add clustering metrics result table
-        
+                       
 
         else: #non LAMI mode
-            #self._print_date(begin_ns, end_ns)
             self._print_feature_vector(feature_vector_table)
 
     #this is called after analysis is finished by the base class Command to create a summary table if required
@@ -251,10 +233,8 @@ class Vectorizer(Command):
             tr_name = vmpid.split('/')[0]
             vmid_cr3 = vmpid.split('/')[1]+'/'+vmpid.split('/')[2]
             result_table.append_row(
-                #path         = mi.String(self._args.path),
                 name         = mi.String(tr_name),
                 vmcr3        = mi.String(vmid_cr3),
-#                cluster      = mi.Number(int(km.labels_[i])),
                 avg_timer    = mi.Number(avgvec[vmpid][0]),
                 freq_timer   = mi.Number(fvec[vmpid][0]),
                 avg_disk     = mi.Number(avgvec[vmpid][1]),
@@ -275,34 +255,6 @@ class Vectorizer(Command):
 
         return result_table
 
-    #TODO remove no longer used
-    def _get_clustering_result_table(self, period_data, begin_ns, end_ns, names, clusters, samples, table_name):
-        result_table = \
-            self._mi_create_result_table(table_name,
-                                         begin_ns, end_ns)
-        
-        i=0
-        samples_arr = samples.toarray() #change from sparse matrix to numpy array so can be indexed properly
-        for vmpid in names:#iterate over all VMID/PIDs
-            tr_name = vmpid.split('/')[0]
-            vmid_cr3 = vmpid.split('/')[1]+'/'+vmpid.split('/')[2]
-            result_table.append_row_tuple( #TODO for an example look at irq.py:400
-                #path         = mi.String(self._args.path),
-                name         = mi.String(tr_name),
-                vmcr3        = mi.String(vmid_cr3),
-                km           = mi.Number(int(clusters['KMEANS'][0][i])),
-                freq_timer   = mi.Number(samples_arr[i][0]),
-                freq_disk    = mi.Number(samples_arr[i][1]),
-                freq_net     = mi.Number(samples_arr[i][2]),
-                freq_task    = mi.Number(samples_arr[i][3]),
-                freq_unknown = mi.Number(samples_arr[i][4]),
-                freq_nonroot = mi.Number(samples_arr[i][5]),
-                freq_root    = mi.Number(samples_arr[i][6]),
-                freq_idle    = mi.Number(samples_arr[i][7]),
-            )
-            i += 1
-
-        return result_table
 
     #add new command line arguments for this analysis
     def _add_arguments(self, ap):
@@ -505,11 +457,9 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
     #compute clusterings 
     #populate cl = {'KMEANS':(clusterlabels[1,2,3,1], paramlist[]), ...}
     #iterate over list of clustering algorithms
-    #TODO: generalize clustering algorithms and take as command line options
     cl = {}
     i = 0;
     for alg in alg_list: 
-        print(traceName)
         func = Clustering.switcher.value.get(alg[0].value)
         c, param = func(samples,alg[1]) #execute clustering algorithm over samples with alg[1] as inparams
         cl[ alg[2] ] = (c,param)
