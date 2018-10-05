@@ -38,12 +38,80 @@ import math
 from sklearn.cluster import KMeans
 from sklearn.feature_extraction.text import TfidfTransformer
 from sklearn.metrics import silhouette_samples, silhouette_score
+from sklearn.metrics.pairwise import cosine_similarity
 
 from enum import Enum
 import numpy as np
 import functools
 import matplotlib.pyplot as plt
 from matplotlib import cm
+
+#from igraph import load
+#from igraph import plot
+#from igraph import ClusterColoringPalette
+#from igraph import RainbowPalette
+#from igraph import drawing
+
+#import cairo
+
+colors = ['#000000', '#15b01a', '#0343df', '#9a0eea', '#e50000', '#ff796c', '#ffff14', '#f97306', '#00ffff', '#01ff07', '#75bbfd']
+
+#cosine similarity matrix among samples
+#input: samples array[n_samples, n_features]
+#output: sim_matrix [n_samples, n_samples] 
+def cosine_sim(samples):
+    return cosine_similarity(samples, dense_output = True)
+    
+#compute euclidean similarity matrix    
+def euclidean_sim(samples):
+    n_samples = samples.shape[0]
+    d = np.zeros((n_samples,n_samples))
+    d_min = 0
+    d_max = 0
+    for i in range(n_samples):
+        for j in range(n_samples):
+            d[i][j] = math.sqrt(sqdist(samples.toarray()[i],samples.toarray()[j]))
+            if d[i][j] < d_min:
+                d_min = d[i][j]
+            if d[i][j] > d_max:
+                d_max = d[i][j]
+            
+    for i in range(n_samples):
+        for j in range(n_samples):
+            d[i][j] = 1-(d[i][j]-d_min)/(d_max-d_min)
+    return d
+
+#compute euclidean similarity matrix with indexes sorted according to order
+def euclidean_sim(samples, order):
+    n_samples = samples.shape[0]
+    d = np.zeros((n_samples,n_samples))
+    d_min = 0
+    d_max = 0
+    for i in range(n_samples):
+        for j in range(n_samples):
+            d[i][j] = math.sqrt(sqdist(samples.toarray()[order[i]],samples.toarray()[order[j]]))
+            if d[i][j] < d_min:
+                d_min = d[i][j]
+            if d[i][j] > d_max:
+                d_max = d[i][j]
+            
+    for i in range(n_samples):
+        for j in range(n_samples):
+            d[i][j] = 1-(d[i][j]-d_min)/(d_max-d_min)
+    return d
+
+#TODO Graph visualization
+def graph_viz(samples, similarity, threshold=0, 
+    vertex_label=None, edge_label=None, 
+    vertex_color=None, edge_color=None, 
+    weight=None, bipartite=False):
+    
+    if not bipartite: #each vertex is a VMPID
+        print('dfg')
+    else: #bipartite graph of VMPIDs and Features
+        print('dsdaffg')
+    
+    return 
 
 #compute squared euclidean distance between two arrays
 #sample is a numpy array
@@ -55,21 +123,7 @@ def show_sim_matrix(samples,labels,vmpid_list):
     #sort samples with respect to labels
     order = np.argsort(labels).tolist() 
     #compute similarity matrix
-    d = np.zeros((samples.shape[0],samples.shape[0]))
-    d_min = 0
-    d_max = 0
-    for i in order:
-        for j in order:
-            d[i][j] = math.sqrt(sqdist(samples.toarray()[i],samples.toarray()[j]))
-            if d[i][j] < d_min:
-                d_min = d[i][j]
-            if d[i][j] > d_max:
-                d_max = d[i][j]
-            
-    for i in order:
-        for j in order:
-            d[i][j] = 1-(d[i][j]-d_min)/(d_max-d_min)
-            
+    d = euclidean_sim(samples, order)        
     vmpid_list = [vmpid_list[i]+'['+str(labels[i])+']' for i in order] #concatenate cluster labels to vmpid name
     #plot it
     fig, ax = plt.subplots()
