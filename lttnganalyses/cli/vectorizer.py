@@ -51,7 +51,7 @@ def sqdist(sample,centroid):
     return functools.reduce(lambda x,y:x+y, (sample-centroid)*(sample-centroid))
 
 #TODO show the similarity matrix of the clustered data
-def show_sim_matrix(samples,labels):
+def show_sim_matrix(samples,labels,vmpid_list):
     #sort samples with respect to labels
     order = np.argsort(labels).tolist() 
     #compute similarity matrix
@@ -69,17 +69,29 @@ def show_sim_matrix(samples,labels):
     for i in order:
         for j in order:
             d[i][j] = 1-(d[i][j]-d_min)/(d_max-d_min)
+            
+    vmpid_list = [vmpid_list[i]+'['+str(labels[i])+']' for i in order] #concatenate cluster labels to vmpid name
     #plot it
-#    plt.matshow(d)
-#    plt.show()    
     fig, ax = plt.subplots()
     cax = ax.imshow(d, interpolation='nearest', cmap=cm.coolwarm)
     ax.set_title('Similarity Matrix')
+    ax.set_yticks(np.arange(len(vmpid_list)))
+    ax.set_xticks(np.arange(len(labels)))
+    ax.set_yticklabels(vmpid_list)
+    ax.set_xticklabels(sorted(labels))
+    #axr = ax.twinx()
+    #axr.set_yticks(np.arange(len(labels)))
+    #axr.set_yticklabels(sorted(labels))
+    #axr.imshow(d, interpolation='nearest', cmap=cm.coolwarm)
+
+    #plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
 
     # Add colorbar, make sure to specify tick locations to match desired ticklabels
-    cbar = fig.colorbar(cax, ticks=[0, 0.5, 1])
-    cbar.ax.set_yticklabels(['< 0', '0.5', '> 1'])  # vertically oriented colorbar
+    cbar = fig.colorbar(cax, ticks=[0, 0.25, 0.5, 0.75, 1])
+    cbar.ax.set_yticklabels(['< 0', '0.25', '0.5', '0.75', '> 1'])  # vertically oriented colorbar
+    #fig.tight_layout()  # otherwise the right y-label is slightly clipped
     plt.show()
+    
     return 
     
 #performs kmeans clustering on a list of samples
@@ -522,7 +534,7 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
 
         #plot similarity matrix
         if traceName == '':
-            show_sim_matrix(samples,c)
+            show_sim_matrix(samples,c,filtered_vmpid_list)
 
         col_infos.append((
             'alg{}'.format(i),
