@@ -1,3 +1,4 @@
+#!/usr/bin/python2.7
 # The MIT License (MIT)
 #
 # Copyright (C) 2015 - Julien Desfossez <jdesfossez@efficios.com>
@@ -24,7 +25,9 @@
 
 # Author 2018 - Seyed Vahid Azhari <azharivs@gmail.com>
 # sample command line options 
-# --top 4 --feature fti,fdi,fta,fne,wti,wdi,wta,wne --algs kmeans3,kmeans4,kmeans5,kmeans6,kmeans7
+# --top 3 --feature fti,fdi,fta,fne,wti,wdi,wta,wne --algs kmeans2,kmeans3,kmeans4,kmeans5,kmeans6,kmeans7,kmeans8
+# --top 5 --feature fti,fdi,fta,fne --algs kmeans2,kmeans3,kmeans4,kmeans5,kmeans6,kmeans7,kmeans8
+# --top 5 --feature wti,wdi,wta,wne --algs kmeans2,kmeans3,kmeans4,kmeans5,kmeans6,kmeans7,kmeans8
 
 #TODO remove unnecessary LAMI baggage 
 import operator
@@ -46,15 +49,24 @@ import functools
 import matplotlib.pyplot as plt
 from matplotlib import cm
 
-#from igraph import load
-#from igraph import plot
-#from igraph import ClusterColoringPalette
-#from igraph import RainbowPalette
-#from igraph import drawing
+from igraph import load
+from igraph import plot
+from igraph import ClusterColoringPalette
+from igraph import RainbowPalette
+from igraph import drawing
 
-#import cairo
+import cairo
 
 colors = ['#000000', '#15b01a', '#0343df', '#9a0eea', '#e50000', '#ff796c', '#ffff14', '#f97306', '#00ffff', '#01ff07', '#75bbfd']
+
+#TODO do normalization over a column as well as over a row
+# Row normalization compares a VMPID with itself, e.g., (Timer=300,Net=30) 
+# will be the same as (Timer=30,Net=3), where Timer triggers 10 times more frequently than Net.
+# Column-wise normalization would overcome this problem provided that workloads have the same
+# time scale. That is, both are run for the same amount of time, otherwise the one running longer
+# would definitely have larger absolute frequency. 
+# One remedy is to use relative frequency (or rate) instead of absolute.
+# For example, we can divide frequency by total execution time in root or non root.
 
 #cosine similarity matrix among samples
 #input: samples array[n_samples, n_features]
@@ -101,13 +113,16 @@ def euclidean_sim(samples, order):
     return d
 
 #TODO Graph visualization
-def graph_viz(samples, similarity, threshold=0, 
-    vertex_label=None, edge_label=None, 
+def graph_viz(samples, similarity, vertex_label,
+    threshold, edge_label=None, 
     vertex_color=None, edge_color=None, 
-    weight=None, bipartite=False):
+    weight=True, bipartite=False):
     
     if not bipartite: #each vertex is a VMPID
         print('dfg')
+        sim = similarity(samples)
+        sim[sim < threshold] = 0 #set entries with low similarity to zero
+        
     else: #bipartite graph of VMPIDs and Features
         print('dsdaffg')
     
@@ -119,7 +134,7 @@ def sqdist(sample,centroid):
     return functools.reduce(lambda x,y:x+y, (sample-centroid)*(sample-centroid))
 
 #TODO show the similarity matrix of the clustered data
-def show_sim_matrix(samples,labels,vmpid_list):
+def show_sim_matrix(samples,labels,vmpid_list,name):
     #sort samples with respect to labels
     order = np.argsort(labels).tolist() 
     #compute similarity matrix
@@ -144,7 +159,10 @@ def show_sim_matrix(samples,labels,vmpid_list):
     cbar = fig.colorbar(cax, ticks=[0, 0.25, 0.5, 0.75, 1])
     cbar.ax.set_yticklabels(['< 0', '0.25', '0.5', '0.75', '> 1'])  # vertically oriented colorbar
     #fig.tight_layout()  # otherwise the right y-label is slightly clipped
+    #plt.ion() #turn on interactive mode so execution does not block on show()
+    plt.savefig("/home/azhari/temp/"+name+".png", dpi=150, bbox_inches='tight')
     plt.show()
+    #from io import BytesIO
     
     return 
     
@@ -588,7 +606,7 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
 
         #plot similarity matrix
         if traceName == '':
-            show_sim_matrix(samples,c,filtered_vmpid_list)
+            show_sim_matrix(samples,c,filtered_vmpid_list,alg[2])
 
         col_infos.append((
             'alg{}'.format(i),
