@@ -323,16 +323,17 @@ class Vectorizer(Command):
         if self._mi_mode: #LAMI mode
             #with open('/home/azhari/FROM_UBUNTU/runtime-EclipseApplication/vm_analysis/.tracing/folder_list.txt') as listF:
             with open(self._args.list) as listF:
-                folders = listF.readlines()
-                folders = list(set(folders)) #remove duplicates
-                folders = [fl.replace('\n','') for fl in folders] #remove newline at the end
+                traceNames = listF.readlines()
+                traceNames = list(set(traceNames)) #remove duplicates
+                traceNames = [fl.replace('\n','') for fl in traceNames] #remove newline at the end
                 d = {}
                 avgvec = {}
                 fvec = {}
-                for folder in folders:
-                    traceName = folder.split('/')[-2] #extract name of tracefile
-                    avgFileName = folder + 'avgdur.vector'
-                    freqFileName = folder + 'frequency.vector'
+                for traceName in traceNames:
+                    path = self._args.list[0:[i for i in range(len(self._args.list)) if self._args.list[i]=='/'][-1]]
+                    avgFileName = path + '/' + traceName + '/avgdur.vector'
+                    freqFileName = path + '/' + traceName + '/frequency.vector'
+                    print(avgFileName)
                     with open(avgFileName,'r') as avgF, open(freqFileName,'r') as freqF:
                         #returns dictionary with key = VMID/PID and values = wait times and frequencies all in one list
                         d, avgvec, fvec = vectorize(avgF,freqF,traceName,d,avgvec,fvec)
