@@ -865,7 +865,7 @@ Please consider using the --period option.''')
                         ' at least one of the selected features (default = 0: include all)')
         ap.add_argument('-f','--feature', type=str, default='*',
                         help='Only include these features given as comma separated list:'
-                        ' [f:frequency|w:wait time][ti:timer|ta:task|di:disk|ne:network|ot:other|no:non-root|ro:root|id:idle]'
+                        ' [f:frequency|w:wait time][ti:timer|ta:task|di:disk|ne:network|ot:other|no:non-root|ro:root|l0:l0 preemption]'
                         'Example: fti,fta,fdi,fne only considers frequencies of timer,task,disk,network'
                         'Example: w*: include all average wait times'
                         '(default=*: include all)')
