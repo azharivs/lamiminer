@@ -858,6 +858,8 @@ Please consider using the --period option.''')
             help = ''
 
         #ap.add_argument('--stats', action='store_true', help=help)
+        ap.add_argument('-l','--list', type=str, default='',
+                        help='Absolute path and filename of folder_list.txt file containing paths to all folders containing .vector files.')
         ap.add_argument('-t','--top', type=int, default=0,
                         help='Limit samples to VMPID/CR3 among top n candidates for'
                         ' at least one of the selected features (default = 0: include all)')

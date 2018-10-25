@@ -321,8 +321,8 @@ class Vectorizer(Command):
 
         #register result tables in list of results 
         if self._mi_mode: #LAMI mode
-            #TODO make this file as command line input
-            with open('/home/azhari/FROM_UBUNTU/runtime-EclipseApplication/vm_analysis/.tracing/folder_list.txt') as listF:
+            #with open('/home/azhari/FROM_UBUNTU/runtime-EclipseApplication/vm_analysis/.tracing/folder_list.txt') as listF:
+            with open(self._args.list) as listF:
                 folders = listF.readlines()
                 folders = list(set(folders)) #remove duplicates
                 folders = [fl.replace('\n','') for fl in folders] #remove newline at the end
@@ -347,9 +347,10 @@ class Vectorizer(Command):
                 if clusters != None: 
                     self._mi_append_result_table(clustering_table)             
                 feature_vector_table = self._get_feature_vector_result_table(period_data,begin_ns, end_ns, '', d, avgvec, fvec) #absolute frequency i.e., count
-                self._mi_append_result_table(feature_vector_table)             
-                feature_vector_table = self._get_feature_vector_result_table(period_data,begin_ns, end_ns, '', d, avgvec, rvec) #rate vector
-                self._mi_append_result_table(feature_vector_table)             
+                self._mi_append_result_table(feature_vector_table)
+                if self._args.rate == True:
+                    feature_vector_table = self._get_feature_vector_result_table(period_data,begin_ns, end_ns, '', d, avgvec, rvec) #rate vector
+                    self._mi_append_result_table(feature_vector_table)             
                        
 
         else: #non LAMI mode
@@ -509,7 +510,9 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
     #if --rate is provided then obtain waiting rate instead of waiting frequency
     #only apply to frequency features
     if args.rate == False:
-        rvec = fvec
+        rvec = {}
+        for vmpid in vmpid_list:
+            rvec[vmpid] = fvec[vmpid]
     else: #compute rate
         rvec = {}
         for vmpid in vmpid_list:
@@ -521,7 +524,7 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
                     rvec[vmpid] = fvec[vmpid] 
             else:
                 rvec[vmpid] = 1000000000 * (fvec[vmpid] / exec_time) #per nanosec to per sec
-    
+
     #take samples among the top n in any of the features, 
     #n=0 means take all samples (TODO not tested): n<0 means the bottom samples 
     #TODO Another alternative is to take the top n AFTER normalization
@@ -534,16 +537,16 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
     f_samples = np.zeros((len(vmpid_list),0))
     w_samples = np.zeros((len(vmpid_list),0))
     filtered_vmpid_list = []
-
+            
     if len(w_index) > 0:
         w_samples = np.zeros((len(vmpid_list),len(w_index)))
     if len(f_index) > 0:
         f_samples = np.zeros((len(vmpid_list),len(f_index)))
 
-
+    
     #start with freq features
     if len(f_index) > 0:
-        i = 0
+        i = 0 #index of rows (samples)
         for vmpid in vmpid_list:
             tmp = [ True for j in f_index if rvec[vmpid][j] >= topf[j] ]
             if any(tmp): #at least one column in freq vector satisfies filter criteria
@@ -564,7 +567,6 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
             w_samples = w_samples[0:i] #eliminate zero rows corresponding to filtered out data     
         #perform feature vector normalization
         #TODO add option for no normalization
-        #print(traceName,i)
         if i > 0: #at least one sample remains after filtering
             f_transformer = TfidfTransformer(norm=args.norm, smooth_idf=False, sublinear_tf=False, use_idf=False)
             f_samples = f_transformer.fit_transform(f_samples)
@@ -598,7 +600,7 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
     
 
     if len(w_index) == 0 and len(f_index) == 0: #no samples made it through the filters
-        return None, None, None, None
+        return None, None, None, None, None
         
     #now form aggregate sample matrix and re-normalize
     if len(w_index) == 0:
@@ -613,7 +615,6 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
     samples = transformer.fit_transform(samples)
     #build sample matrix out of feature vectors end <<<<<<<<<<<<<<<<<<<<<<<<<<<
     
-   
     #compute clustering and create result table begin >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     #construct table structure and columns
     col_infos = [
