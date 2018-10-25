@@ -869,6 +869,8 @@ Please consider using the --period option.''')
                         '(default=*: include all)')
         ap.add_argument('-n','--norm', type=str, default='l2',
                         help='Normalizing method for feature vector: l1|l2 (default =l2)')
+        ap.add_argument('--rate', default=False, action='store_true',
+                        help='Scale frequency feature w.r.t. total execution time (root+non-root) to obtain waiting rate (default =False)')
         ap.add_argument('-c','--algs', type=str, default='kmeans3',
                         help='Only include these clustering algorithms given as comma separated list:'
                         ' kmeans3,dbscan,aggmax,aggmin,aggavg (agg:agglomerative)'

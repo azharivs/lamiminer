@@ -1,4 +1,3 @@
-#!/usr/bin/python2.7
 # The MIT License (MIT)
 #
 # Copyright (C) 2015 - Julien Desfossez <jdesfossez@efficios.com>
@@ -24,6 +23,9 @@
 # SOFTWARE.
 
 # Author 2018 - Seyed Vahid Azhari <azharivs@gmail.com>
+# Order if features in .vector files:
+# Timer/Disk/Net/Task/Unknown/NonRoot/Root/Idle
+#
 # sample command line options 
 # --top 3 --feature fti,fdi,fta,fne,wti,wdi,wta,wne --algs kmeans2,kmeans3,kmeans4,kmeans5,kmeans6,kmeans7,kmeans8
 # --top 5 --feature fti,fdi,fta,fne --algs kmeans2,kmeans3,kmeans4,kmeans5,kmeans6,kmeans7,kmeans8
@@ -67,6 +69,7 @@ colors = ['#000000', '#15b01a', '#0343df', '#9a0eea', '#e50000', '#ff796c', '#ff
 # would definitely have larger absolute frequency. 
 # One remedy is to use relative frequency (or rate) instead of absolute.
 # For example, we can divide frequency by total execution time in root or non root.
+# I will add a --rate option for this 
 
 #cosine similarity matrix among samples
 #input: samples array[n_samples, n_features]
@@ -133,7 +136,7 @@ def graph_viz(samples, similarity, vertex_label,
 def sqdist(sample,centroid):
     return functools.reduce(lambda x,y:x+y, (sample-centroid)*(sample-centroid))
 
-#TODO show the similarity matrix of the clustered data
+
 def show_sim_matrix(samples,labels,vmpid_list,name):
     #sort samples with respect to labels
     order = np.argsort(labels).tolist() 
@@ -336,15 +339,17 @@ class Vectorizer(Command):
                         #no clustering just output feature vectors
                         feature_vector_table = self._get_feature_vector_result_table(period_data,begin_ns, end_ns, traceName, d, avgvec, fvec)
                         self._mi_append_result_table(feature_vector_table)
-                        names, clusters, samples, clustering_table = get_clusters(self, traceName, d, avgvec, fvec, alg_list, self._args, begin_ns, end_ns)
+                        names, clusters, samples, clustering_table, rvec = get_clusters(self, traceName, d, avgvec, fvec, alg_list, self._args, begin_ns, end_ns)
                         if clusters != None:
                             self._mi_append_result_table(clustering_table)
-                        
-                feature_vector_table = self._get_feature_vector_result_table(period_data,begin_ns, end_ns, '', d, avgvec, fvec)
-                self._mi_append_result_table(feature_vector_table)             
-                names, clusters, samples, clustering_table = get_clusters(self, '', d, avgvec, fvec, alg_list, self._args, begin_ns, end_ns)               
+    
+                names, clusters, samples, clustering_table, rvec = get_clusters(self, '', d, avgvec, fvec, alg_list, self._args, begin_ns, end_ns)               
                 if clusters != None: 
                     self._mi_append_result_table(clustering_table)             
+                feature_vector_table = self._get_feature_vector_result_table(period_data,begin_ns, end_ns, '', d, avgvec, fvec) #absolute frequency i.e., count
+                self._mi_append_result_table(feature_vector_table)             
+                feature_vector_table = self._get_feature_vector_result_table(period_data,begin_ns, end_ns, '', d, avgvec, rvec) #rate vector
+                self._mi_append_result_table(feature_vector_table)             
                        
 
         else: #non LAMI mode
@@ -445,7 +450,8 @@ def vectorize(avgF,freqF,traceName,d,avgvec,fvec):
     #create a dictionary with key = traceFileName/VMID/PID and values the wait times and frequencies all in one list
     tmpd={traceName+'/'+avglines[i].split(',')[0] : avglines[i].split(',')[1:] + freqlines[i].split(',')[1:] for i in range(0,len(freqlines))}
     d.update(tmpd)
-            
+
+#TODO consider possibility of dict to index various fields, e.g., f['timer']=int(tmpd[vmpid][8])          
     for vmpid in tmpd.keys():
         f = np.zeros(8)
         avg = np.zeros(8)
@@ -500,29 +506,49 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
             if feature[0] == 'w':
                 w_index.append(index[feature])
     
-
+    #if --rate is provided then obtain waiting rate instead of waiting frequency
+    #only apply to frequency features
+    if args.rate == False:
+        rvec = fvec
+    else: #compute rate
+        rvec = {}
+        for vmpid in vmpid_list:
+            exec_time = (avgvec[vmpid][5]*fvec[vmpid][5]+avgvec[vmpid][6]*fvec[vmpid][6])
+            if exec_time == 0:
+                if fvec[vmpid][0:7].any():
+                    print(vmpid,'Bad frequency vector !!!')
+                else:
+                    rvec[vmpid] = fvec[vmpid] 
+            else:
+                rvec[vmpid] = 1000000000 * (fvec[vmpid] / exec_time) #per nanosec to per sec
+    
     #take samples among the top n in any of the features, 
     #n=0 means take all samples (TODO not tested): n<0 means the bottom samples 
     #TODO Another alternative is to take the top n AFTER normalization
     n = args.top
-    topf = [sorted(np.array(list(fvec.values()))[:,ii])[-n] for ii in range(max(index.values())+1)] #take top n frequency feature values and store in topf
+    if len(vmpid_list) < n: #less samples than --top n argument
+        n = len(vmpid_list)
+        
+    topf = [sorted(np.array(list(rvec.values()))[:,ii])[-n] for ii in range(max(index.values())+1)] #take top n frequency feature values and store in topf
     topw = [sorted(np.array(list(avgvec.values()))[:,ii])[-n] for ii in range(max(index.values())+1)] #take top n average wait ...
     f_samples = np.zeros((len(vmpid_list),0))
     w_samples = np.zeros((len(vmpid_list),0))
     filtered_vmpid_list = []
+
     if len(w_index) > 0:
         w_samples = np.zeros((len(vmpid_list),len(w_index)))
     if len(f_index) > 0:
         f_samples = np.zeros((len(vmpid_list),len(f_index)))
 
+
     #start with freq features
     if len(f_index) > 0:
         i = 0
         for vmpid in vmpid_list:
-            tmp = [ True for j in f_index if fvec[vmpid][j] >= topf[j] ]
+            tmp = [ True for j in f_index if rvec[vmpid][j] >= topf[j] ]
             if any(tmp): #at least one column in freq vector satisfies filter criteria
                 filtered_vmpid_list.append(vmpid)
-                f_samples[i,:] = [ fvec[vmpid][j] for j in f_index ]
+                f_samples[i,:] = [ rvec[vmpid][j] for j in f_index ]
                 if len(w_index) > 0:
                     w_samples[i,:] = [ avgvec[vmpid][j] for j in w_index ]
                 i += 1
@@ -530,7 +556,7 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
                 tmp = [ True for j in w_index if avgvec[vmpid][j] >= topw[j] ]
                 if any(tmp): #but at least one column in wait vector satisfies filter criteria
                     filtered_vmpid_list.append(vmpid)
-                    f_samples[i,:] = [ fvec[vmpid][j] for j in f_index ]
+                    f_samples[i,:] = [ rvec[vmpid][j] for j in f_index ]
                     w_samples[i,:] = [ avgvec[vmpid][j] for j in w_index ]
                     i += 1    
         f_samples = f_samples[0:i] #eliminate zero rows corresponding to filtered out data
@@ -569,6 +595,7 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
             w_samples = w_transformer.fit_transform(w_samples)
         else:
             w_index = []
+    
 
     if len(w_index) == 0 and len(f_index) == 0: #no samples made it through the filters
         return None, None, None, None
@@ -721,7 +748,7 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
     result_table.append_row_tuple(tuple(row_tuple))
     
     #compute clustering and create result table end <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-    return filtered_vmpid_list, cl, samples, result_table
+    return filtered_vmpid_list, cl, samples, result_table, rvec
 
 
 #creates custom names for various clustering algorithms based on their input parameters
