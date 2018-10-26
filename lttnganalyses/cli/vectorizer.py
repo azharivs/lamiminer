@@ -651,53 +651,59 @@ def vectorize_vcpu(avgF,freqF,preemptF,exitF,traceName,d,avgvec,fvec,prvec,exvec
     #print('vectorize_vcpu_end:',traceName)
     return d, avgvec, fvec, prvec, exvec  
 
-def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_ns, end_ns):
+def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, d_vcpu, avgvec_vcpu, fvec_vcpu, prvec_vcpu, exvec_vcpu, alg_list, args, begin_ns, end_ns):
     if traceName == '': #aggregate of all traces
-        vmpid_list = d.keys()
+        vmpid_list = d_proc.keys()
+        vmid_vcpu_list = d_vcpu.keys()
     else:#filter out this traceName and take related VM/CR3 values and put in list
-        vmpid_list = [s for s in d.keys() if s.split('/')[0] == traceName]
+        vmpid_list = [s for s in d_proc.keys() if s.split('/')[0] == traceName]
+        vmid_vcpu_list = [s for s in d_vcpu.keys() if s.split('/')[0] == traceName]
     
     #build sample matrix out of feature vectors begin >>>>>>>>>>>>>>>>>>>>>>>>>
     #preprocess feature vectors (filtering)
     #determine which features to consider (Freq|Wait)
     #(TIMER,DISK,NET,TASK,OTHER,NON_ROOT,ROOT,IDLE,L0_PREEMPTION)
-    f_index = [] #will eventually contain index number for feature to be included in analysis
-    w_index = []
+    f_proc_index = [] #will eventually contain index number for feature to be included in analysis
+    w_proc_index = []
+    f_vcpu_index = [] #will eventually contain index number for feature to be included in analysis
+    w_vcpu_index = []
+    pr_vcpu_index = [] #will eventually contain index number for feature to be included in analysis
     #dict of command line arguments and the corresponding feature index to take
     index = {'fti':0,'wti':0,'fdi':1,'wdi':1,'fne':2,'wne':2,'fta':3,'wta':3,'fot':4,'wot':4,'fno':5,'wno':5,'fro':6,'wro':6,'fl0':7,'wl0':7}
-    for feature in  args.feature.split(','):
+    prindex = {'v':0,'h':1,'p':2,'t':3} #preemption vector: VM/VM, VM/Host, In VM Process, In VM Thread
+    for feature in  args.proc.split(','):
         if feature[0] == '*':
-            f_index = list(range(max(index.values())+1)) #max number of features obtained from index dict
-            w_index = list(range(max(index.values())+1))
+            f_proc_index = list(range(max(index.values())+1)) #max number of features obtained from index dict
+            w_proc_index = list(range(max(index.values())+1))
         
         elif feature[1] == '*':      
             if feature[0] == 'f':
-                f_index = list(range(max(index.values())+1))
+                f_proc_index = list(range(max(index.values())+1))
             if feature[0] == 'w':
-                w_index[:] = list(range(max(index.values())+1))
+                w_proc_index[:] = list(range(max(index.values())+1))
         else:
             if feature[0] == 'f':
-                f_index.append(index[feature])
+                f_proc_index.append(index[feature])
             if feature[0] == 'w':
-                w_index.append(index[feature])
+                w_proc_index.append(index[feature])
     
     #if --rate is provided then obtain waiting rate instead of waiting frequency
     #only apply to frequency features
     if args.rate == False:
-        rvec = {}
+        rvec_proc = {}
         for vmpid in vmpid_list:
-            rvec[vmpid] = fvec[vmpid]
+            rvec_proc[vmpid] = fvec_proc[vmpid]
     else: #compute rate
-        rvec = {}
+        rvec_proc = {}
         for vmpid in vmpid_list:
-            exec_time = (avgvec[vmpid][5]*fvec[vmpid][5]+avgvec[vmpid][6]*fvec[vmpid][6])
+            exec_time = (avgvec_proc[vmpid][5]*fvec_proc[vmpid][5]+avgvec_proc[vmpid][6]*fvec_proc[vmpid][6])
             if exec_time == 0:
-                if fvec[vmpid][0:7].any():
+                if fvec_proc[vmpid][0:7].any():
                     print(vmpid,'Bad frequency vector !!!')
                 else:
-                    rvec[vmpid] = fvec[vmpid] 
+                    rvec_proc[vmpid] = fvec_proc[vmpid] 
             else:
-                rvec[vmpid] = 1000000000 * (fvec[vmpid] / exec_time) #per nanosec to per sec
+                rvec_proc[vmpid] = 1000000000 * (fvec_proc[vmpid] / exec_time) #per nanosec to per sec
 
     #take samples among the top n in any of the features, 
     #n=0 means take all samples (TODO not tested): n<0 means the bottom samples 
@@ -706,87 +712,87 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
     if len(vmpid_list) < n: #less samples than --top n argument
         n = len(vmpid_list)
         
-    topf = [sorted(np.array(list(rvec.values()))[:,ii])[-n] for ii in range(max(index.values())+1)] #take top n frequency feature values and store in topf
-    topw = [sorted(np.array(list(avgvec.values()))[:,ii])[-n] for ii in range(max(index.values())+1)] #take top n average wait ...
-    f_samples = np.zeros((len(vmpid_list),0))
-    w_samples = np.zeros((len(vmpid_list),0))
+    topf_proc = [sorted(np.array(list(rvec_proc.values()))[:,ii])[-n] for ii in range(max(index.values())+1)] #take top n frequency feature values and store in topf
+    topw_proc = [sorted(np.array(list(avgvec_proc.values()))[:,ii])[-n] for ii in range(max(index.values())+1)] #take top n average wait ...
+    f_proc_samples = np.zeros((len(vmpid_list),0))
+    w_proc_samples = np.zeros((len(vmpid_list),0))
     filtered_vmpid_list = []
             
-    if len(w_index) > 0:
-        w_samples = np.zeros((len(vmpid_list),len(w_index)))
-    if len(f_index) > 0:
-        f_samples = np.zeros((len(vmpid_list),len(f_index)))
+    if len(w_proc_index) > 0:
+        w_proc_samples = np.zeros((len(vmpid_list),len(w_proc_index)))
+    if len(f_proc_index) > 0:
+        f_proc_samples = np.zeros((len(vmpid_list),len(f_proc_index)))
 
     
     #start with freq features
-    if len(f_index) > 0:
+    if len(f_proc_index) > 0:
         i = 0 #index of rows (samples)
         for vmpid in vmpid_list:
-            tmp = [ True for j in f_index if rvec[vmpid][j] >= topf[j] ]
+            tmp = [ True for j in f_proc_index if rvec_proc[vmpid][j] >= topf_proc[j] ]
             if any(tmp): #at least one column in freq vector satisfies filter criteria
                 filtered_vmpid_list.append(vmpid)
-                f_samples[i,:] = [ rvec[vmpid][j] for j in f_index ]
-                if len(w_index) > 0:
-                    w_samples[i,:] = [ avgvec[vmpid][j] for j in w_index ]
+                f_proc_samples[i,:] = [ rvec_proc[vmpid][j] for j in f_proc_index ]
+                if len(w_proc_index) > 0:
+                    w_proc_samples[i,:] = [ avgvec_proc[vmpid][j] for j in w_proc_index ]
                 i += 1
-            elif len(w_index) > 0: #no column in freq vector satisfies filter criteria
-                tmp = [ True for j in w_index if avgvec[vmpid][j] >= topw[j] ]
+            elif len(w_proc_index) > 0: #no column in freq vector satisfies filter criteria
+                tmp = [ True for j in w_proc_index if avgvec_proc[vmpid][j] >= topw_proc[j] ]
                 if any(tmp): #but at least one column in wait vector satisfies filter criteria
                     filtered_vmpid_list.append(vmpid)
-                    f_samples[i,:] = [ rvec[vmpid][j] for j in f_index ]
-                    w_samples[i,:] = [ avgvec[vmpid][j] for j in w_index ]
+                    f_proc_samples[i,:] = [ rvec_proc[vmpid][j] for j in f_proc_index ]
+                    w_proc_samples[i,:] = [ avgvec_proc[vmpid][j] for j in w_proc_index ]
                     i += 1    
-        f_samples = f_samples[0:i] #eliminate zero rows corresponding to filtered out data
-        if len(w_index) > 0:
-            w_samples = w_samples[0:i] #eliminate zero rows corresponding to filtered out data     
+        f_proc_samples = f_proc_samples[0:i] #eliminate zero rows corresponding to filtered out data
+        if len(w_proc_index) > 0:
+            w_proc_samples = w_proc_samples[0:i] #eliminate zero rows corresponding to filtered out data     
         #perform feature vector normalization
         #TODO add option for no normalization
         if i > 0: #at least one sample remains after filtering
-            f_transformer = TfidfTransformer(norm=args.norm, smooth_idf=False, sublinear_tf=False, use_idf=False)
-            f_samples = f_transformer.fit_transform(f_samples)
-            if len(w_index) > 0:
-                w_transformer = TfidfTransformer(norm=args.norm, smooth_idf=False, sublinear_tf=False, use_idf=False)
-                w_samples = w_transformer.fit_transform(w_samples)
+            f_proc_transformer = TfidfTransformer(norm=args.norm, smooth_idf=False, sublinear_tf=False, use_idf=False)
+            f_proc_samples = f_proc_transformer.fit_transform(f_proc_samples)
+            if len(w_proc_index) > 0:
+                w_proc_transformer = TfidfTransformer(norm=args.norm, smooth_idf=False, sublinear_tf=False, use_idf=False)
+                w_proc_samples = w_proc_transformer.fit_transform(w_proc_samples)
             else:
-                w_index = [] #act as if no features are selected
+                w_proc_index = [] #act as if no features are selected
         else:
-            f_index = []
-            w_index = []
+            f_proc_index = []
+            w_proc_index = []
 
     #Only average wait time features were selected
     #n=0 means take all samples n<0 means the bottom samples
-    elif len(w_index) > 0:
+    elif len(w_proc_index) > 0:
         i = 0
         for vmpid in vmpid_list:
-            tmp = [ True for j in w_index if avgvec[vmpid][j] >= topw[j] ]
+            tmp = [ True for j in w_proc_index if avgvec_proc[vmpid][j] >= topw_proc[j] ]
             if any(tmp): #at least one column satisfies filter criteria
                 filtered_vmpid_list.append(vmpid)
-                w_samples[i,:] = [ avgvec[vmpid][j] for j in w_index ]
+                w_proc_samples[i,:] = [ avgvec_proc[vmpid][j] for j in w_proc_index ]
                 i += 1    
-        w_samples = w_samples[0:i] #eliminate zero rows corresponding to filtered out data     
+        w_proc_samples = w_proc_samples[0:i] #eliminate zero rows corresponding to filtered out data     
         #perform feature vector normalization
         #TODO add option for no normalization
         if i > 0:
-            w_transformer = TfidfTransformer(norm=args.norm, smooth_idf=False, sublinear_tf=False, use_idf=False)
-            w_samples = w_transformer.fit_transform(w_samples)
+            w_proc_transformer = TfidfTransformer(norm=args.norm, smooth_idf=False, sublinear_tf=False, use_idf=False)
+            w_proc_samples = w_proc_transformer.fit_transform(w_proc_samples)
         else:
-            w_index = []
+            w_proc_index = []
     
 
-    if len(w_index) == 0 and len(f_index) == 0: #no samples made it through the filters
+    if len(w_proc_index) == 0 and len(f_proc_index) == 0: #no samples made it through the filters
         return None, None, None, None, None
         
     #now form aggregate sample matrix and re-normalize
-    if len(w_index) == 0:
-        samples = f_samples.toarray()
-    elif len(f_index) == 0:
-        samples = w_samples.toarray()
+    if len(w_proc_index) == 0:
+        samples_proc = f_proc_samples.toarray()
+    elif len(f_proc_index) == 0:
+        samples_proc = w_proc_samples.toarray()
     else:
-        samples = np.append(f_samples.toarray(),w_samples.toarray(),1)
+        samples_proc = np.append(f_proc_samples.toarray(),w_proc_samples.toarray(),1)
     
     #TODO add option for no normalization
-    transformer = TfidfTransformer(norm=args.norm, smooth_idf=False, sublinear_tf=False, use_idf=False)
-    samples = transformer.fit_transform(samples)
+    transformer_proc = TfidfTransformer(norm=args.norm, smooth_idf=False, sublinear_tf=False, use_idf=False)
+    samples_proc = transformer_proc.fit_transform(samples_proc)
     #build sample matrix out of feature vectors end <<<<<<<<<<<<<<<<<<<<<<<<<<<
     
     #compute clustering and create result table begin >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -803,12 +809,12 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
     i = 0;
     for alg in alg_list: 
         func = Clustering.switcher.value.get(alg[0].value)
-        c, param = func(samples,alg[1]) #execute clustering algorithm over samples with alg[1] as inparams
+        c, param = func(samples_proc,alg[1]) #execute clustering algorithm over samples with alg[1] as inparams
         cl[ alg[2] ] = (c,param)
 
         #plot similarity matrix
         if traceName == '':
-            show_sim_matrix(samples,c,filtered_vmpid_list,alg[2])
+            show_sim_matrix(samples_proc,c,filtered_vmpid_list,alg[2])
 
         col_infos.append((
             'alg{}'.format(i),
@@ -833,14 +839,14 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
         i += 1
         
     i=0
-    for f in f_index:
+    for f in f_proc_index:
         col_infos.append((
             'c{}'.format(i),
             vectorizer._VECTOR_ORDER[f]+' Freq.',
             mi.Number
         ))
         i += 1
-    for w in w_index:
+    for w in w_proc_index:
         col_infos.append((
             'c{}'.format(i),
             vectorizer._VECTOR_ORDER[w]+' Wait',
@@ -853,7 +859,7 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
 
     #populate rows
     i=0
-    samples_arr = samples.toarray() #change from sparse matrix to numpy array so can be indexed properly       
+    samples_arr = samples_proc.toarray() #change from sparse matrix to numpy array so can be indexed properly       
     for vmpid in filtered_vmpid_list:#iterate over all VMID/PIDs
         tr_name = vmpid.split('/')[0]
         vmid_cr3 = vmpid.split('/')[1]+'/'+vmpid.split('/')[2]
@@ -872,7 +878,7 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
             s_sil = cl[ alg[2] ][1]['sample silhouette'][i]
             row_tuple.append( mi.Number( s_sil ) ) #add sample silhouette for this sample
                     
-        for col in range(len(f_index)+len(w_index)):
+        for col in range(len(f_proc_index)+len(w_proc_index)):
             row_tuple.append(mi.Number(samples_arr[i][col]))
         result_table.append_row_tuple(tuple(row_tuple))
         i += 1   
@@ -888,7 +894,7 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
         row_tuple.append( mi.Number( 0 ) )
         row_tuple.append( mi.Number( 0 ) )
 
-    for col in range(len(f_index)+len(w_index)):
+    for col in range(len(f_proc_index)+len(w_proc_index)):
         row_tuple.append(mi.Number(0))
     result_table.append_row_tuple(tuple(row_tuple))
     
@@ -903,7 +909,7 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
         row_tuple.append( mi.Number( 0 ) )
         row_tuple.append( mi.Number( 0 ) )
 
-    for col in range(len(f_index)+len(w_index)):
+    for col in range(len(f_proc_index)+len(w_proc_index)):
         row_tuple.append(mi.Number(0))
     result_table.append_row_tuple(tuple(row_tuple))
     
@@ -918,12 +924,12 @@ def get_clusters(vectorizer, traceName, d, avgvec, fvec, alg_list, args, begin_n
         row_tuple.append( mi.Number( 0 ) )
         row_tuple.append( mi.Number( 0 ) )
 
-    for col in range(len(f_index)+len(w_index)):
+    for col in range(len(f_proc_index)+len(w_proc_index)):
         row_tuple.append(mi.Number(0))
     result_table.append_row_tuple(tuple(row_tuple))
     
     #compute clustering and create result table end <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-    return filtered_vmpid_list, cl, samples, result_table, rvec
+    return filtered_vmpid_list, cl, samples_proc, result_table, rvec_proc
 
 
 #creates custom names for various clustering algorithms based on their input parameters

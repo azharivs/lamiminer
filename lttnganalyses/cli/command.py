@@ -863,20 +863,31 @@ Please consider using the --period option.''')
         ap.add_argument('-t','--top', type=int, default=0,
                         help='Limit samples to VMPID/CR3 among top n candidates for'
                         ' at least one of the selected features (default = 0: include all)')
-        ap.add_argument('-f','--feature', type=str, default='*',
-                        help='Only include these features given as comma separated list:'
-                        ' [f:frequency|w:wait time][ti:timer|ta:task|di:disk|ne:network|ot:other|no:non-root|ro:root|l0:l0 preemption]'
+        ap.add_argument('-p','--proc', type=str, default='*',
+                        help='Only include these features from the VM/Process data files given as comma separated list:'
+                        '[f:frequency|w:wait time][ti:timer|ta:task|di:disk|ne:network|ot:other|no:non-root|ro:root|l0:l0 preemption]'
                         'Example: fti,fta,fdi,fne only considers frequencies of timer,task,disk,network'
                         'Example: w*: include all average wait times'
                         '(default=*: include all)')
+        ap.add_argument('-v','--vcpu', type=str, default='',
+                        help='Only include these features from the VM/vCPU data files given as comma separated list:'
+                        '[f:frequency|w:wait time|p:preemption freq|e:exit freq]'
+                        'Used with f,w prefix, e.g., fti,wl0: [ti:timer|ta:task|di:disk|ne:network|ot:other|no:non-root|ro:root|l0:l0 preemption]'
+                        'Used with p prefix, e.g., pv,ph: [v:VM/VM|h:VM/Host|p:in VM process preemption freq.|t:in VM thread preemption freq.]'
+                        'Used with e prefix, e.g., eN1,N2,... a comma separated list of exit codes follow'
+                        'Example: fti,fta,fdi,fne only considers frequencies of timer,task,disk,network'
+                        'Example: w*: include all average wait times'
+                        'Example: p*: include all types of VM preemptions'
+                        'Example: e*: include all exit codes'
+                        '(default='': none of the vcpu features)')
         ap.add_argument('-n','--norm', type=str, default='l2',
                         help='Normalizing method for feature vector: l1|l2 (default =l2)')
         ap.add_argument('--rate', default=False, action='store_true',
                         help='Scale frequency feature w.r.t. total execution time (root+non-root) to obtain waiting rate (default =False)')
         ap.add_argument('-c','--algs', type=str, default='kmeans3',
                         help='Only include these clustering algorithms given as comma separated list:'
-                        ' kmeans3,dbscan,aggmax,aggmin,aggavg (agg:agglomerative)'
-                        ' When relevant, the number at the end indicates the number of clusters'
+                        'kmeans3,dbscan,aggmax,aggmin,aggavg (agg:agglomerative)'
+                        'When relevant, the number at the end indicates the number of clusters'
                         'Example: kmeans3,dbscan '
                         '    Run kmeans with 3 clusters and run dbscan'
                         '(default=kmeans3)')
