@@ -137,21 +137,27 @@ def graph_viz(samples, similarity, vertex_label,
 def sqdist(sample,centroid):
     return functools.reduce(lambda x,y:x+y, (sample-centroid)*(sample-centroid))
 
-
+#TODO needs cleanup
 def show_sim_matrix_proc_vm(proc_vm_label, samples_vm, cl_vm, vm_list, samples_proc, cl_proc, vmpid_list):
     #sort samples with respect to labels
+    sil = cl_proc[1]['total silhouette']
+    name = 'KMEANS_Proc{}_VM{}'.format(max(cl_proc[0])+1,max(cl_vm[0])+1) #TODO generalize for other clusterings besides KMEANS
     labels = cl_proc[0]
     order = np.argsort(labels).tolist() 
     #compute similarity matrix
-    d = euclidean_sim(samples_proc, order)        
-    vmpid_list = [vmpid_list[i]+'['+str(labels[i])+','+proc_vm_label[vmpid_list[i][0:vmpid_list[i].rfind('/')]]+']' for i in order] #concatenate cluster labels to vmpid name
+    d = euclidean_sim(samples_proc, order)
+    new_vmpid_list = list(vmpid_list)     
+    print("show_sim_matrix_proc_vm_begin")
+    new_vmpid_list = \
+        [vmpid_list[i]+'['+str(labels[i])+','+str(proc_vm_label[vmpid_list[i][0:vmpid_list[i].rfind('/')]])+']'\
+        for i in order] #concatenate cluster labels to vmpid name
     #plot it
     fig, ax = plt.subplots()
     cax = ax.imshow(d, interpolation='nearest', cmap=cm.coolwarm)
-    ax.set_title('Similarity Matrix'+' (Silhouette = '+str(sil)+')')
-    ax.set_yticks(np.arange(len(vmpid_list)))
+    ax.set_title(name+'\n'+'Similarity Matrix'+' (Silhouette = '+str(sil)+')')
+    ax.set_yticks(np.arange(len(new_vmpid_list)))
     ax.set_xticks(np.arange(len(labels)))
-    ax.set_yticklabels(vmpid_list)
+    ax.set_yticklabels(new_vmpid_list)
     ax.set_xticklabels(sorted(labels))
     #axr = ax.twinx()
     #axr.set_yticks(np.arange(len(labels)))
@@ -182,7 +188,7 @@ def show_sim_matrix(samples,labels,vmpid_list,name,sil):
     #plot it
     fig, ax = plt.subplots()
     cax = ax.imshow(d, interpolation='nearest', cmap=cm.coolwarm)
-    ax.set_title('Similarity Matrix'+' (Silhouette = '+str(sil)+')')
+    ax.set_title(name+'\n'+'Similarity Matrix'+' (Silhouette = '+str(sil)+')')
     ax.set_yticks(np.arange(len(vmpid_list)))
     ax.set_xticks(np.arange(len(labels)))
     ax.set_yticklabels(vmpid_list)
@@ -744,11 +750,11 @@ def filter_samples(top_n, index_list, key_list, vec, sz):
     #print(top)
     fl = []
     fl_out = list(key_list)
-    print(key_list)
+    #print(key_list)
     if len(index_list) > 0:
         for key in key_list:
             tmp = [ True for j in index_list if vec[key][j] >= top[j] ]
-            print(key,tmp)
+            #print(key,tmp)
             if any(tmp): #at least one column in vector satisfies filter criteria
                 fl.append(key)
                 fl_out.remove(key)
@@ -900,9 +906,9 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, d_vcpu, 
         exec_time = (avgvec_proc[vmpid][5]*fvec_proc[vmpid][5]+avgvec_proc[vmpid][6]*fvec_proc[vmpid][6])
         execvec_proc[vmpid] = exec_time / 1000000
         if exec_time == 0:
-            print(vmpid, 'INFO: Zero execution time !!!')
+            print('WARNING: Zero execution time in: ', vmpid)
             if fvec_proc[vmpid][0:7].any():
-                print(vmpid,'WARNING: Bad frequency vector !!!')
+                print('WARNING: Bad frequency vector in: ', vmpid)
             else:
                 rvec_proc[vmpid] = fvec_proc[vmpid] 
         else:
@@ -961,21 +967,21 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, d_vcpu, 
         execvec_vm = collapse_vm_samples(execvec_vcpu) #total execution time over all vCPUs (in msec)
         vm_list = rvec_vm.keys()
         
-        print("*********")
-        print(list(vm_list))
+        #print("*********")
+        #print(list(vm_list))
         #print(rvec_vm)
         filtered_vm_list, fl_out = filter_samples(0, f_vcpu_index, list(vm_list), rvec_vm, max(index.values())+1 )
-        print(filtered_vm_list, fl_out)
+        #print(filtered_vm_list, fl_out)
         fl, fl_out = filter_samples(0, w_vcpu_index, fl_out, avgvec_vm, max(index.values())+1 )
         filtered_vm_list = filtered_vm_list + fl
-        print(filtered_vm_list, fl_out)
+        #print(filtered_vm_list, fl_out)
         fl, fl_out = filter_samples(0, pr_vcpu_index, fl_out, rvec_prvm, max(prindex.values())+1 )
         filtered_vm_list = filtered_vm_list + fl
-        print(filtered_vm_list, fl_out)
+        #print(filtered_vm_list, fl_out)
         fl, fl_out = filter_samples(0, ex_vcpu_index, fl_out, rvec_exvm, 65)
         filtered_vm_list = filtered_vm_list + fl
-        print(filtered_vm_list, fl_out)
-        print("*********")
+        #print(filtered_vm_list, fl_out)
+        #print("*********")
         (f_vm_samples, w_vm_samples, pr_vm_samples, ex_vm_samples) = \
                 create_vectors(\
                 filtered_vm_list, \
@@ -1004,7 +1010,7 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, d_vcpu, 
 
         #plot similarity matrix
         if traceName == '':
-            show_sim_matrix(samples_proc,c,filtered_vmpid_list,alg[2],param['total silhouette'])
+            show_sim_matrix(samples_proc,c,filtered_vmpid_list,'Proc_'+alg[2],param['total silhouette'])
 
     cl = cl_proc
     
@@ -1017,7 +1023,7 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, d_vcpu, 
     
             #plot similarity matrix
             if traceName == '':
-                show_sim_matrix(samples_vm,c,filtered_vm_list,alg[2],param['total silhouette'])
+                show_sim_matrix(samples_vm,c,filtered_vm_list,'VM_'+alg[2],param['total silhouette'])
 
 
     #overall best VM and Proc clustering results
@@ -1036,11 +1042,11 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, d_vcpu, 
         
         jj = 0
         proc_vm_label = {}
-        print(filtered_vm_list)
-        print(filtered_vmpid_list)
+        #print(filtered_vm_list)
+        #print(filtered_vmpid_list)
         for l in cl_proc[max_sil_proc_key][0]: #for l in cluster labels of selected proc clustering
             vm = filtered_vmpid_list[jj][0:filtered_vmpid_list[jj].rfind('/')] #get the vm key: traceName:timestamp/vmpid
-            print(vm, filtered_vm_list.index(vm), cl_vm[max_sil_vm_key][0])
+            #print(vm, filtered_vm_list.index(vm), cl_vm[max_sil_vm_key][0])
             proc_vm_label[vm] = cl_vm[max_sil_vm_key][0][filtered_vm_list.index(vm)]
             jj = jj + 1
         
