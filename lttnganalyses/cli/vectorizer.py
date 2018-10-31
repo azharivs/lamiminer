@@ -138,7 +138,42 @@ def sqdist(sample,centroid):
     return functools.reduce(lambda x,y:x+y, (sample-centroid)*(sample-centroid))
 
 
-def show_sim_matrix(samples,labels,vmpid_list,name):
+def show_sim_matrix_proc_vm(proc_vm_label, samples_vm, cl_vm, vm_list, samples_proc, cl_proc, vmpid_list):
+    #sort samples with respect to labels
+    labels = cl_proc[0]
+    order = np.argsort(labels).tolist() 
+    #compute similarity matrix
+    d = euclidean_sim(samples_proc, order)        
+    vmpid_list = [vmpid_list[i]+'['+str(labels[i])+','+proc_vm_label[vmpid_list[i][0:vmpid_list[i].rfind('/')]]+']' for i in order] #concatenate cluster labels to vmpid name
+    #plot it
+    fig, ax = plt.subplots()
+    cax = ax.imshow(d, interpolation='nearest', cmap=cm.coolwarm)
+    ax.set_title('Similarity Matrix'+' (Silhouette = '+str(sil)+')')
+    ax.set_yticks(np.arange(len(vmpid_list)))
+    ax.set_xticks(np.arange(len(labels)))
+    ax.set_yticklabels(vmpid_list)
+    ax.set_xticklabels(sorted(labels))
+    #axr = ax.twinx()
+    #axr.set_yticks(np.arange(len(labels)))
+    #axr.set_yticklabels(sorted(labels))
+    #axr.imshow(d, interpolation='nearest', cmap=cm.coolwarm)
+
+    #plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
+
+    # Add colorbar, make sure to specify tick locations to match desired ticklabels
+    cbar = fig.colorbar(cax, ticks=[0, 0.25, 0.5, 0.75, 1])
+    cbar.ax.set_yticklabels(['< 0', '0.25', '0.5', '0.75', '> 1'])  # vertically oriented colorbar
+    #fig.tight_layout()  # otherwise the right y-label is slightly clipped
+    #plt.ion() #turn on interactive mode so execution does not block on show()
+    plt.savefig("/home/azhari/temp/"+name+".png", dpi=150, bbox_inches='tight')
+    plt.show()
+    #from io import BytesIO
+    
+    return 
+    
+
+
+def show_sim_matrix(samples,labels,vmpid_list,name,sil):
     #sort samples with respect to labels
     order = np.argsort(labels).tolist() 
     #compute similarity matrix
@@ -147,7 +182,7 @@ def show_sim_matrix(samples,labels,vmpid_list,name):
     #plot it
     fig, ax = plt.subplots()
     cax = ax.imshow(d, interpolation='nearest', cmap=cm.coolwarm)
-    ax.set_title('Similarity Matrix')
+    ax.set_title('Similarity Matrix'+' (Silhouette = '+str(sil)+')')
     ax.set_yticks(np.arange(len(vmpid_list)))
     ax.set_xticks(np.arange(len(labels)))
     ax.set_yticklabels(vmpid_list)
@@ -192,14 +227,16 @@ def kmeans_clustering(samples, inparams):
 
 #    print(cc,ssb)
     #TODO compute point wise and overall silhouette coeff
-#    print("labels:",cl.labels_)
-#    print("samples:",samples.shape)
+    #print("labels:",len(cl.labels_), max(cl.labels_))
+    #print("samples:",samples.shape)
     s_sil = -1*np.ones(samples.shape[0]) #initialize to all negative (worst value)
     sil = -1
-    if (samples.shape[0] > n) and (len(cl.labels_) > 1) : #if samples more than clusters and at least two clusters 
+    if (samples.shape[0] > n) and (max(cl.labels_) >= 1) : #if samples more than clusters and at least two clusters 
         s_sil = silhouette_samples(samples.toarray(),cl.labels_)
+        #print("SILHOUTTE",s_sil)
         sil = silhouette_score(samples.toarray(),cl.labels_)
     outparams = {'sample silhouette':s_sil,'total silhouette':sil,'total ssb':ssb,'cluster size':c_n,'centroids':cl.cluster_centers_, 'total sse':cl.inertia_, 'cluster sse':c_sse, 'squared distance':d}
+    #print("kmeans_clustering_end")
     return cl.labels_, outparams 
     
 #TODO
@@ -652,6 +689,37 @@ def vectorize_vcpu(avgF,freqF,preemptF,exitF,traceName,d,avgvec,fvec,prvec,exvec
     #print('vectorize_vcpu_end:',traceName)
     return d, avgvec, fvec, prvec, exvec  
 
+# (weighted) sum of all rows belonging to a VM and returns the resulting vector
+# input parameters:
+# |vec|: input vector to be collapsed 
+# |weight_vec|: optional weight vector. If none provided then simple sum.
+# returns:
+# |new_vec|: collapsed vector 
+def collapse_vm_samples(vec, weight_vec = None):
+    print("collapse_vm_samples")
+    new_vec = {}
+    total_weight = {} 
+    for key in vec.keys():
+        vm = key[0:key.rfind('/')]
+        if vm in new_vec:
+            if weight_vec == None:
+                new_vec[vm] = new_vec[vm] + vec[key]
+            else:
+                new_vec[vm] = new_vec[vm] + vec[key]*weight_vec[key]
+                total_weight[vm] = total_weight[vm] + weight_vec[key]            
+        else:
+            if weight_vec == None:            
+                new_vec[vm] = vec[key]
+            else:
+                new_vec[vm] = vec[key]*weight_vec[key]
+                total_weight[vm] = weight_vec[key]            
+    
+    if weight_vec != None:            
+        for key in new_vec.keys():
+            new_vec[key] = new_vec[key] / total_weight[key]
+            
+    return new_vec
+
 # Take dictionary of vectors |vec| and list of feature indices to be considered |index_list|
 # then select those vectors having one of the selected features as among the |top_n| values
 # input parameters:
@@ -664,7 +732,7 @@ def vectorize_vcpu(avgF,freqF,preemptF,exitF,traceName,d,avgvec,fvec,prvec,exvec
 # |fl|: newly filtered (selected) sample keys from the dict
 # |fl_out|: filtered out (not selected) sample keys  
 def filter_samples(top_n, index_list, key_list, vec, sz):
-    print("filter_samples_begin",key_list)#,sz, top_n, index_list, key_list, vec)
+    #print("filter_samples_begin",key_list)#,sz, top_n, index_list, key_list, vec)
     n = top_n
     if n > len(key_list):
         n = len(key_list)
@@ -673,23 +741,26 @@ def filter_samples(top_n, index_list, key_list, vec, sz):
     #n=0 means take all samples (TODO not tested): n<0 means the bottom samples 
     #TODO Another alternative is to take the top n AFTER normalization
     top = [sorted(np.array(list(vec.values()))[:,ii])[-n] for ii in range(sz)] #take top n freq feature values and store in topf
+    #print(top)
     fl = []
-    fl_out = key_list
+    fl_out = list(key_list)
+    print(key_list)
     if len(index_list) > 0:
         for key in key_list:
             tmp = [ True for j in index_list if vec[key][j] >= top[j] ]
+            print(key,tmp)
             if any(tmp): #at least one column in vector satisfies filter criteria
                 fl.append(key)
                 fl_out.remove(key)
 
-    print("filter_samples_end",fl,fl_out)
+    #print("filter_samples_end",fl,fl_out)
     return fl, fl_out
 
 
 # input parameters:
 # |key_list|: list of keys for selected samples from the dictionary of vectors
 # |vec_tuple|: a tuple holding sample vectors of interest
-# |index_tuple|: tuple of list of deignated feature indices
+# |index_tuple|: tuple of list of designated feature indices
 # returns:
 # |sample_tuple|: a tuple with same size and order as |vec_tuple| containing 
 #            numpy.array holding samples indicated in |key_list| and reduced by 
@@ -717,7 +788,7 @@ def create_vectors(key_list, vec_tuple, index_tuple, norm_type):
             sample_tuple = sample_tuple.__add__( (samples,) )    
         k = k+1
         #end of for it ...
-    print("create_vectors_end",key_list, sample_tuple)
+    #print("create_vectors_end",key_list, sample_tuple)
     return sample_tuple
 
 # form aggregate sample matrix and re-normalize
@@ -727,7 +798,7 @@ def create_vectors(key_list, vec_tuple, index_tuple, norm_type):
 # |samples|: a unified and re-normalized sample numpy sparse array including all in the tuple
 # do not call samples.toarray() in this function!
 def create_sample_matrix(sample_tuple, norm_type):
-    print("create_sample_matrix_begin", sample_tuple)
+    #print("create_sample_matrix_begin", sample_tuple)
     i = 0
     for it in sample_tuple:
         if len(it) != 0:
@@ -740,18 +811,18 @@ def create_sample_matrix(sample_tuple, norm_type):
     #TODO add option for no normalization
     transformer = TfidfTransformer(norm=norm_type, smooth_idf=False, sublinear_tf=False, use_idf=False)
     samples = transformer.fit_transform(samples)
-    print("create_sample_matrix_end", samples.toarray())
+    #print("create_sample_matrix_end", samples.toarray())
     return samples
 
 
 def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, d_vcpu, avgvec_vcpu, fvec_vcpu, prvec_vcpu, exvec_vcpu, alg_list, args, begin_ns, end_ns):
-    print("get_clusters_begin",traceName)
+    #print("get_clusters_begin",traceName)
     if traceName == '': #aggregate of all traces
-        vmpid_list = d_proc.keys()
-        vmvcpu_list = d_vcpu.keys()
+        vmpid_list = d_proc.keys() #needs to be overwritten after collapse_vm_samples
+        vmvcpu_list = d_vcpu.keys() #needs to be overwritten after collapse_vm_samples
     else:#filter out this traceName and take related VM/CR3 values and put in list
-        vmpid_list = [s for s in d_proc.keys() if s.split('/')[0] == traceName]
-        vmvcpu_list = [s for s in d_vcpu.keys() if s.split('/')[0] == traceName]
+        vmpid_list = [s for s in d_proc.keys() if s.split('/')[0] == traceName] #needs to be overwritten after collapse_vm_samples
+        vmvcpu_list = [s for s in d_vcpu.keys() if s.split('/')[0] == traceName] #needs to be overwritten after collapse_vm_samples
     
     #build sample matrix out of feature vectors begin >>>>>>>>>>>>>>>>>>>>>>>>>
     #preprocess feature vectors (filtering)
@@ -769,7 +840,7 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, d_vcpu, 
     index = {'fti':0,'wti':0,'fdi':1,'wdi':1,'fne':2,'wne':2,'fta':3,'wta':3,'fot':4,'wot':4,'fno':5,'wno':5,'fro':6,'wro':6,'fl0':7,'wl0':7}
     prindex = {'pvm':0,'pho':1,'ppr':2,'pth':3} #preemption vector: VM/VM, VM/Host, In VM Process, In VM Thread
 
-    for feature in  args.proc.split(','): #--proc: process based feature selection
+    for feature in args.proc.split(','): #--proc: process based feature selection
         if feature[0] == '*':
             f_proc_index = list(range(max(index.values())+1)) #max number of features obtained from index dict
             w_proc_index = list(range(max(index.values())+1))
@@ -785,8 +856,10 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, d_vcpu, 
             if feature[0] == 'w':
                 w_proc_index.append(index[feature])
     
-    for feature in  args.vcpu.split(','): #--vcpu: vcpu base feature selection consisting only of timer/net/disk/task/other/root/non-root/l0 waits
-        if feature[0] == '*':
+    for feature in args.vcpu.split(','): #--vcpu: vcpu base feature selection consisting only of timer/net/disk/task/other/root/non-root/l0 waits
+        if feature == '':
+            pass
+        elif feature[0] == '*':
             f_vcpu_index = list(range(max(index.values())+1)) #max number of features obtained from index dict
             w_vcpu_index = list(range(max(index.values())+1))
             pr_vcpu_index = list(range(max(prindex.values())+1))
@@ -817,46 +890,53 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, d_vcpu, 
     print("Proc:", f_proc_index, w_proc_index)
     print("vCPU:",f_vcpu_index, w_vcpu_index, pr_vcpu_index, ex_vcpu_index)
 
+    rvec_proc = {}
+    rvec_vcpu = {}
+    execvec_proc = {} #dict holding total execution time per VM/process in msec
+    execvec_vcpu = {} #dict holding total execution time per VM/vCPU in msec
+    rvec_pr = {}
+    rvec_ex = {}
+    for vmpid in vmpid_list:
+        exec_time = (avgvec_proc[vmpid][5]*fvec_proc[vmpid][5]+avgvec_proc[vmpid][6]*fvec_proc[vmpid][6])
+        execvec_proc[vmpid] = exec_time / 1000000
+        if exec_time == 0:
+            print(vmpid, 'INFO: Zero execution time !!!')
+            if fvec_proc[vmpid][0:7].any():
+                print(vmpid,'WARNING: Bad frequency vector !!!')
+            else:
+                rvec_proc[vmpid] = fvec_proc[vmpid] 
+        else:
+            rvec_proc[vmpid] = 1000000000 * (fvec_proc[vmpid] / exec_time) #per nanosec to per sec
+     
+    for vmvcpu in vmvcpu_list:
+        exec_time = (avgvec_vcpu[vmvcpu][5]*fvec_vcpu[vmvcpu][5]+avgvec_vcpu[vmvcpu][6]*fvec_vcpu[vmvcpu][6])
+        execvec_vcpu[vmvcpu] = exec_time / 1000000
+        if exec_time == 0:
+            print(vmvcpu, 'INFO: Zero execution time !!!')
+            if fvec_vcpu[vmvcpu][0:7].any():
+                print(vmvcpu,'WARNING: Bad frequency vector !!!')
+            else:
+                rvec_vcpu[vmvcpu] = fvec_vcpu[vmvcpu]
+                rvec_pr[vmvcpu] = prvec_vcpu[vmvcpu]
+                rvec_ex[vmvcpu] = exvec_vcpu[vmvcpu] 
+        else:
+            rvec_vcpu[vmvcpu] = 1000000000 * (fvec_vcpu[vmvcpu] / exec_time) #per nanosec to per sec
+            rvec_pr[vmvcpu] = 1000000000 * (prvec_vcpu[vmvcpu] / exec_time) #per nanosec to per sec
+            rvec_ex[vmvcpu] = 1000000000 * (exvec_vcpu[vmvcpu] / exec_time) #per nanosec to per sec
+
     #if --rate is provided then obtain waiting rate instead of waiting frequency
     #waiting frequency is absolute total number of times the entity has waited during trace period    
     #waiting rate is number of times the entity has waited per second
     #only apply to frequency features
     #TODO: to be applied separately to preemption/exit/freq features using appropriate cmd args
+    #TODO bad coding, overwritting previously computed rvec
     if args.rate == False:
-        rvec_proc = {}
-        rvec_vcpu = {}
-        #rvec_pr = {}
-        #rvec_ex = {}
         for vmpid in vmpid_list:
             rvec_proc[vmpid] = fvec_proc[vmpid]
         for vmvcpu in vmvcpu_list:
             rvec_vcpu[vmvcpu] = fvec_vcpu[vmvcpu]
-            #rvec_pr[vmvcpu] = prvec_vcpu[vmvcpu]
-            #rvec_ex[vmvcpu] = exvec_vcpu[vmvcpu]
-    else: #compute rate
-        rvec_proc = {}
-        rvec_vcpu = {}
-        #rvec_pr = {}
-        #rvec_ex = {}
-        for vmpid in vmpid_list:
-            exec_time = (avgvec_proc[vmpid][5]*fvec_proc[vmpid][5]+avgvec_proc[vmpid][6]*fvec_proc[vmpid][6])
-            if exec_time == 0:
-                if fvec_proc[vmpid][0:7].any():
-                    print(vmpid,'Bad frequency vector !!!')
-                else:
-                    rvec_proc[vmpid] = fvec_proc[vmpid] 
-            else:
-                rvec_proc[vmpid] = 1000000000 * (fvec_proc[vmpid] / exec_time) #per nanosec to per sec
-
-        for vmvcpu in vmvcpu_list:
-            exec_time = (avgvec_vcpu[vmvcpu][5]*fvec_vcpu[vmvcpu][5]+avgvec_vcpu[vmvcpu][6]*fvec_vcpu[vmvcpu][6])
-            if exec_time == 0:
-                if fvec_vcpu[vmvcpu][0:7].any():
-                    print(vmvcpu,'Bad frequency vector !!!')
-                else:
-                    rvec_vcpu[vmvcpu] = fvec_vcpu[vmvcpu] 
-            else:
-                rvec_vcpu[vmvcpu] = 1000000000 * (fvec_vcpu[vmvcpu] / exec_time) #per nanosec to per sec
+            rvec_pr[vmvcpu] = prvec_vcpu[vmvcpu]
+            rvec_ex[vmvcpu] = exvec_vcpu[vmvcpu]
 
     
     filtered_vmpid_list, fl_out = filter_samples(args.top, f_proc_index, list(vmpid_list), rvec_proc, max(index.values())+1 )
@@ -870,51 +950,144 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, d_vcpu, 
             args.norm \
             )
     
-    filtered_vmvcpu_list, fl_out = filter_samples(args.top, f_vcpu_index, list(vmvcpu_list), rvec_vcpu, max(index.values())+1 )
-    fl, fl_out = filter_samples(args.top, w_vcpu_index, fl_out, avgvec_vcpu, max(index.values())+1 )
-    filtered_vmvcpu_list = filtered_vmvcpu_list + fl
-    fl, fl_out = filter_samples(args.top, pr_vcpu_index, fl_out, prvec_vcpu, max(prindex.values())+1 )
-    filtered_vmvcpu_list = filtered_vmvcpu_list + fl
-    fl, fl_out = filter_samples(args.top, ex_vcpu_index, fl_out, exvec_vcpu, 65)
-    filtered_vmvcpu_list = filtered_vmvcpu_list + fl
-    (f_vcpu_samples, w_vcpu_samples, pr_vcpu_samples, ex_vcpu_samples) = \
-        create_vectors(\
-            filtered_vmvcpu_list, \
-            (rvec_vcpu, avgvec_vcpu, prvec_vcpu, exvec_vcpu), \
-            (f_vcpu_index, w_vcpu_index, pr_vcpu_index, ex_vcpu_index), \
-            args.norm \
-            )
+    #filtered_vmvcpu_list = []
+    filtered_vm_list = []
+    if traceName == '': #only makes sense for aggregate trace clustering
+        rvec_vm = collapse_vm_samples(rvec_vcpu) #TODO: there are two ways to collapse: simple sum or reaverage considering exec times
+        avgvec_vm = collapse_vm_samples(avgvec_vcpu, fvec_vcpu)
+        rvec_prvm = collapse_vm_samples(rvec_pr)
+        #print(rvec_prvm.keys())
+        rvec_exvm = collapse_vm_samples(rvec_ex)
+        execvec_vm = collapse_vm_samples(execvec_vcpu) #total execution time over all vCPUs (in msec)
+        vm_list = rvec_vm.keys()
+        
+        print("*********")
+        print(list(vm_list))
+        #print(rvec_vm)
+        filtered_vm_list, fl_out = filter_samples(0, f_vcpu_index, list(vm_list), rvec_vm, max(index.values())+1 )
+        print(filtered_vm_list, fl_out)
+        fl, fl_out = filter_samples(0, w_vcpu_index, fl_out, avgvec_vm, max(index.values())+1 )
+        filtered_vm_list = filtered_vm_list + fl
+        print(filtered_vm_list, fl_out)
+        fl, fl_out = filter_samples(0, pr_vcpu_index, fl_out, rvec_prvm, max(prindex.values())+1 )
+        filtered_vm_list = filtered_vm_list + fl
+        print(filtered_vm_list, fl_out)
+        fl, fl_out = filter_samples(0, ex_vcpu_index, fl_out, rvec_exvm, 65)
+        filtered_vm_list = filtered_vm_list + fl
+        print(filtered_vm_list, fl_out)
+        print("*********")
+        (f_vm_samples, w_vm_samples, pr_vm_samples, ex_vm_samples) = \
+                create_vectors(\
+                filtered_vm_list, \
+                (rvec_vm, avgvec_vm, rvec_prvm, rvec_exvm), \
+                (f_vcpu_index, w_vcpu_index, pr_vcpu_index, ex_vcpu_index), \
+                args.norm \
+                )
     
-    if len(filtered_vmpid_list) == 0 and len(filtered_vmvcpu_list) == 0: #no samples made it through
+    if len(filtered_vmpid_list) == 0 and len(filtered_vm_list) == 0: #no samples made it through
         return None, None, None, None
     
     if len(filtered_vmpid_list) != 0:
         samples_proc = create_sample_matrix( (f_proc_samples, w_proc_samples), args.norm )
 
-    if len(filtered_vmvcpu_list) != 0:       
-        samples_vcpu = create_sample_matrix( (f_vcpu_samples, w_vcpu_samples, pr_vcpu_samples, ex_vcpu_samples), args.norm )
+    if len(filtered_vm_list) != 0:       
+        samples_vm = create_sample_matrix( (f_vm_samples, w_vm_samples, pr_vm_samples, ex_vm_samples), args.norm )
     #build sample matrix out of feature vectors end <<<<<<<<<<<<<<<<<<<<<<<<<<<
     
     #compute clustering and create result table begin >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+    cl_proc = {} #for processXXXX.vector files
+    for alg in alg_list: 
+        func = Clustering.switcher.value.get(alg[0].value)
+        c, param = func(samples_proc,alg[1]) #execute clustering algorithm over samples with alg[1] as inparams
+        # c = list of cluster labels, where samples are ordered as in filtered_vmpid_list
+        cl_proc[ alg[2] ] = (c,param)
+
+        #plot similarity matrix
+        if traceName == '':
+            show_sim_matrix(samples_proc,c,filtered_vmpid_list,alg[2],param['total silhouette'])
+
+    cl = cl_proc
+    
+    if (traceName == '') and (len(filtered_vm_list) != 0): #VM analysis only makes sense for aggregate of trace files
+        cl_vm = {} #for cpuXXXX files, where we have already collapsed all vCPUs to get a VM view
+        for alg in alg_list: 
+            func = Clustering.switcher.value.get(alg[0].value)
+            c, param = func(samples_vm,alg[1]) #execute clustering algorithm over samples with alg[1] as inparams
+            cl_vm[ alg[2] ] = (c,param)
+    
+            #plot similarity matrix
+            if traceName == '':
+                show_sim_matrix(samples_vm,c,filtered_vm_list,alg[2],param['total silhouette'])
+
+
+    #overall best VM and Proc clustering results
+    if (traceName == '') and (len(filtered_vm_list) != 0) and (len(filtered_vmpid_list) != 0):         
+        max_sil_vm = 0
+        for key in cl_vm.keys():
+            if max_sil_vm < cl_vm[key][1]['total silhouette']:
+                max_sil_vm = cl_vm[key][1]['total silhouette']
+                max_sil_vm_key = key
+        
+        max_sil_proc = 0
+        for key in cl_proc.keys():
+            if max_sil_proc < cl_proc[key][1]['total silhouette']:
+                max_sil_proc = cl_proc[key][1]['total silhouette']
+                max_sil_proc_key = key
+        
+        jj = 0
+        proc_vm_label = {}
+        print(filtered_vm_list)
+        print(filtered_vmpid_list)
+        for l in cl_proc[max_sil_proc_key][0]: #for l in cluster labels of selected proc clustering
+            vm = filtered_vmpid_list[jj][0:filtered_vmpid_list[jj].rfind('/')] #get the vm key: traceName:timestamp/vmpid
+            print(vm, filtered_vm_list.index(vm), cl_vm[max_sil_vm_key][0])
+            proc_vm_label[vm] = cl_vm[max_sil_vm_key][0][filtered_vm_list.index(vm)]
+            jj = jj + 1
+        
+        print(proc_vm_label)
+        show_sim_matrix_proc_vm(proc_vm_label, samples_vm, cl_vm[max_sil_vm_key], filtered_vm_list, samples_proc, cl_proc[max_sil_proc_key], filtered_vmpid_list)
+        #show clustering results for procXXXX.vector files
+#        show_clustering_results(title = 'VM Clustering',\
+#            col_infos = col_infos_vm,\
+#            clusters = cl_vm,\
+#            samples = samples_vm,\
+#            algs = alg_list,\
+#            feature_index = (f_vcpu_index, w_vcpu_index, pr_vcpu_index, ex_vcpu_index),\
+#            rows = filtered_vm_list,\
+#            begin_ts = begin_ns, end_ts = end_ns\
+#            )
+
+    #TODO: Refactor
+    #show clustering results for procXXXX.vector files
+#    show_clustering_results(title = 'Proc Clustering',\
+#        col_infos = col_infos_proc,\
+#        clusters = cl_proc,\
+#        samples = samples_proc,\
+#        algs = alg_list,\
+#        feature_index = (f_proc_index, w_proc_index),\
+#        rows = filtered_vmpid_list,\
+#        begin_ts = begin_ns, end_ts = end_ns\
+#        )
+
+    
     #construct table structure and columns
     col_infos = [
             ('name', 'Experiment', mi.String),
-            ('vmcr3', 'VMID/CR3', mi.String),
+            ('vmcr3', 'VMID/CR3', mi.String),            
+            ('timestamp', 'Time', mi.String),
+            ]
+    
+    col_infos_vm = [
+            ('name', 'Experiment', mi.String),
+            ('vmpid', 'VMID', mi.String),            
+            ('timestamp', 'Time', mi.String),
             ]
     
     #compute clusterings 
     #populate cl = {'KMEANS':(clusterlabels[1,2,3,1], paramlist[]), ...}
     #iterate over list of clustering algorithms
-    cl = {}
     i = 0;
     for alg in alg_list: 
-        func = Clustering.switcher.value.get(alg[0].value)
-        c, param = func(samples_proc,alg[1]) #execute clustering algorithm over samples with alg[1] as inparams
-        cl[ alg[2] ] = (c,param)
-
-        #plot similarity matrix
-        if traceName == '':
-            show_sim_matrix(samples_proc,c,filtered_vmpid_list,alg[2])
 
         col_infos.append((
             'alg{}'.format(i),
@@ -953,9 +1126,13 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, d_vcpu, 
             mi.Number
         ))
         i += 1
-    title = 'Clustering'
+    title = 'Proc Clustering'
     table_class = mi.TableClass(None, title, col_infos)
     result_table = mi.ResultTable(table_class, begin_ns, end_ns)
+
+#    title_vcpu = 'VM Clustering'
+#    table_class_vcpu = mi.TableClass(None, title_vcpu, col_infos_vcpu)
+#    result_table_vcpu = mi.ResultTable(table_class_vcpu, begin_ns, end_ns)
 
     #populate rows
     i=0
@@ -1027,13 +1204,15 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, d_vcpu, 
     for col in range(len(f_proc_index)+len(w_proc_index)):
         row_tuple.append(mi.Number(0))
     result_table.append_row_tuple(tuple(row_tuple))
+    #TODO: end refactor
     
     #compute clustering and create result table end <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-    print("get_clusters_end",traceName)
+    #print("get_clusters_end",traceName)
     return filtered_vmpid_list, cl, samples_proc, result_table, rvec_proc
 
 
 #creates custom names for various clustering algorithms based on their input parameters
+#e.g., (Clustering.KMEANS, {'n_clusters':3}, KMEANS_3)
 #TODO to be modified for each new algorithm
 def create_alg_list(args):
     tmp = []
