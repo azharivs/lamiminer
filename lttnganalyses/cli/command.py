@@ -863,7 +863,7 @@ Please consider using the --period option.''')
         ap.add_argument('-t','--top', type=int, default=0,
                         help='Limit samples to VMPID/CR3 among top n candidates for'
                         ' at least one of the selected features (default = 0: include all)')
-        ap.add_argument('-p','--proc', type=str, default='*',
+        ap.add_argument('-p','--proc', type=str, default='',
                         help='Only include these features from the VM/Process data files given as comma separated list:'
                         '[f:frequency|w:wait time][ti:timer|ta:task|di:disk|ne:network|ot:other|no:non-root|ro:root|l0:l0 preemption]'
                         'Example: fti,fta,fdi,fne only considers frequencies of timer,task,disk,network'
