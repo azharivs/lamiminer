@@ -93,7 +93,7 @@ def euclidean_sim(samples):
     d_max = 0
     for i in range(n_samples):
         for j in range(i,n_samples):
-            d[i][j] = math.sqrt(sqdist(samples.toarray()[i],samples.toarray()[j]))
+            d[i][j] = (sqdist(samples.toarray()[i],samples.toarray()[j]))**(1/10)
             d[j][i] = d[i][j]
             if d[i][j] < d_min:
                 d_min = d[i][j]
@@ -139,7 +139,7 @@ def graph_viz(samples, similarity, vertex_label,
 #compute squared euclidean distance between two arrays
 #sample is a numpy array
 def sqdist(sample,centroid):
-    return functools.reduce(lambda x,y:x+y, (sample-centroid)*(sample-centroid))
+    return functools.reduce(lambda x,y:x+y, (sample-centroid)**10)
 
 #TODO needs cleanup
 #FIXME unable to graphically identify various traces when number is very large
@@ -185,8 +185,9 @@ def show_sim_matrix_proc_vm(proc_vm_label, samples_vm, cl_vm, vm_list, samples_p
     
 
 #FIXME unable to graphically identify various traces when number is very large
-def show_sim_matrix(sim,labels,vmpid_list,name,sil):
+def show_sim_matrix(sim,labels,vmpid_list,name,sil,centroids, samples, legend = None):
     print("show_sim_matrix")
+    arrsamples = samples.toarray()
     #sort samples with respect to labels
     order = np.argsort(labels).tolist() 
     #compute similarity matrix
@@ -215,12 +216,32 @@ def show_sim_matrix(sim,labels,vmpid_list,name,sil):
     #plt.ion() #turn on interactive mode so execution does not block on show()
     plt.savefig("/home/azhari/temp/"+name+".png", dpi=150, bbox_inches='tight')
     ##plt.show()
-    #also output clusters to text file
-    #with open("/home/azhari/temp/"+name+".Clusters",'w') as outputF:
-    #    for line in vmpid_list:
-    #        outputF.write(line+'\n')
-    #from io import BytesIO
-    
+    #also output centroids to text file
+    with open("/home/azhari/temp/"+name+".centroids",'w') as centF:
+        if legend != None:
+            line = '          \t'
+            for l in legend:
+                line = line + l + '\t\t'
+            centF.write(line+'\n')
+        for i in range(centroids.shape[0]):
+            line = 'Cluster #{}\t'.format(i)
+            for j in range(centroids.shape[1]):
+                line = line + "{0:.3f}\t\t".format(centroids[i][j])
+            line = line + '\n'
+            centF.write(line)
+                
+    with open("/home/azhari/temp/"+name+".clusters",'w') as clF:
+        if legend != None:
+            line = ''
+            for l in legend:
+                line = line + l + '\t\t'
+            clF.write(line+'\n')
+        for i in range(samples.shape[0]):
+            line = ''
+            for j in range(samples.shape[1]):
+                line = line + "{0:.3f}\t\t".format(arrsamples[order[i]][j])
+            line = line + vmpid_list[i]+'\n'
+            clF.write(line)
     return 
     
 #performs kmeans clustering on a list of samples
@@ -856,9 +877,12 @@ def create_vectors(key_list, vec_tuple, index_tuple, norm_type):
                 i += 1
             #perform feature vector normalization
             #TODO add option for no normalization
+            if samples.shape[1] == 1: #no normalization if only one feature available FIXME could cause problems in logic
+                norm_type = None
             if i > 0: #at least one sample remains after filtering
                 transformer = TfidfTransformer(norm=norm_type, smooth_idf=False, sublinear_tf=False, use_idf=False)
                 samples = transformer.fit_transform(samples)
+                print("^^^^^^^^^^^^^")
                 samples = samples.toarray()
         if k == 0:
             sample_tuple = (samples,)              
@@ -925,7 +949,9 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_pr
     #(w)ait and (f)requency vector: (ti)mer/(ta)sk/...  
     index = {'fti':0,'wti':0,'fdi':1,'wdi':1,'fne':2,'wne':2,'fta':3,'wta':3,'fot':4,'wot':4,'fno':5,'wno':5,'fro':6,'wro':6,'fl0':7,'wl0':7}
     #preemption vector: VM/VM, VM/Host, In VM Process, In VM Thread, (i)nject (ti)mer/(ta)sk/(di)sk/(ne)twork
-    prindex = {'pvm':0,'pho':1,'ppr':2,'pth':3, 'piti':4, 'pita':5, 'pidi':6, 'pine':7} 
+    prindex = {'pvm':0,'pho':1,'ppr':2,'pth':3, 'piti':4, 'pita':5, 'pidi':6, 'pine':7}
+    fw_names = {0:'timer',1:'disk',2:'net',3:'task',4:'other',5:'non-root',6:'root',7:'l0'} 
+    pr_names = {0:'vm',1:'host',2:'proc',3:'thread',4:'timer',5:'task',6:'disk',7:'net'} 
 
     #--proc: process based feature selection
     for feature in args.proc.split(','): 
@@ -1100,19 +1126,25 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_pr
         #print(list(vm_list))
         #print(rvec_vm)
         filtered_vm_list, fl_out = filter_samples(0, f_vcpu_index, list(vm_list), rvec_vm, max(index.values())+1 )
+        legend_vm = [fw_names[ii] for ii in f_vcpu_index]
         #print(filtered_vm_list, fl_out)
         fl, fl_out = filter_samples(0, w_vcpu_index, fl_out, avgvec_vm, max(index.values())+1 )
+        legend_vm = legend_vm + [fw_names[ii] for ii in w_vcpu_index]
         filtered_vm_list = filtered_vm_list + fl
         #print(filtered_vm_list, fl_out)
         fl, fl_out = filter_samples(0, pr_vcpu_index, fl_out, rvec_prvm, max(prindex.values())+1 )
+        legend_vm = legend_vm + [pr_names[ii] for ii in pr_vcpu_index]
         filtered_vm_list = filtered_vm_list + fl
         #print(filtered_vm_list, fl_out)
         fl, fl_out = filter_samples(0, ex_vcpu_index, fl_out, rvec_exvm, 65)
+        legend_vm = legend_vm + ['exit_{}'.format(ii) for ii in ex_vcpu_index]
         filtered_vm_list = filtered_vm_list + fl
         fl, fl_out = filter_samples(0, exec_vcpu_index, fl_out, rvec_exec_vm, 1)
+        legend_vm = legend_vm + ['cpu' for ii in exec_vcpu_index]
         filtered_vm_list = filtered_vm_list + fl
         #print(filtered_vm_list, fl_out)
         #print("*********")
+
         (f_vm_samples, w_vm_samples, pr_vm_samples, ex_vm_samples, exec_vm_samples) = \
                 create_vectors(\
                 filtered_vm_list, \
@@ -1120,6 +1152,7 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_pr
                 (f_vcpu_index, w_vcpu_index, pr_vcpu_index, ex_vcpu_index, exec_vcpu_index), \
                 args.norm \
                 )
+        print("*********")
     
     if len(filtered_vmpid_list) == 0 and len(filtered_vm_list) == 0: #no samples made it through
         return None, None, None, None
@@ -1150,7 +1183,7 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_pr
             #plot similarity matrix
             #TODO in multithreaded version showing similarity matrix can be performed on a different thread along with sim mat computation after computing all clusters
             if traceName == '':
-                show_sim_matrix(sim_proc,c,filtered_vmpid_list,'Proc_'+alg[2],param['total silhouette'])
+                show_sim_matrix(sim_proc,c,filtered_vmpid_list,'Proc_'+alg[2],param['total silhouette'],param['centroids'],samples_proc)
 
     cl = cl_proc
     
@@ -1163,7 +1196,7 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_pr
     
             #plot similarity matrix
             if traceName == '':
-                show_sim_matrix(sim_vm,c,filtered_vm_list,'VM_'+alg[2],param['total silhouette'])
+                show_sim_matrix(sim_vm,c,filtered_vm_list,'VM_'+alg[2],param['total silhouette'],param['centroids'], samples_vm, legend_vm)
 
 
     #overall best VM and Proc clustering results
