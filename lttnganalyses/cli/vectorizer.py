@@ -32,6 +32,12 @@
 # --top 5 --feature wti,wdi,wta,wne --algs kmeans2,kmeans3,kmeans4,kmeans5,kmeans6,kmeans7,kmeans8
 
 #TODO remove unnecessary LAMI baggage 
+#TODO do a clustering for random data and use for comparison
+#TODO consider distribution of similarity score among same class and other class (should be tightly packed)
+#TODO highlight badly clustered samples: those with small intraclass similarity and those with large interclass similarity
+#     E.g., sample : lowest three same class similarity scores with samples i1,i2,i3 (maximum of the three scores = same_cl)
+#                    largest three overlaps with clusters j1,j2,j3 at samples k1,k2,k3 (maximum of the three scores = other_cl)
+#                    where badly clustered samples are those with same_cl < average same cluster score or other_cl > average other cluster score
 import operator
 from ..common import format_utils
 from .command import Command
@@ -78,15 +84,17 @@ colors = ['#000000', '#15b01a', '#0343df', '#9a0eea', '#e50000', '#ff796c', '#ff
 def cosine_sim(samples):
     return cosine_similarity(samples, dense_output = True)
     
-#compute euclidean similarity matrix    
+#compute euclidean similarity matrix and return in numpy array   
 def euclidean_sim(samples):
+    print("euclidean_sim_begin")
     n_samples = samples.shape[0]
     d = np.zeros((n_samples,n_samples))
     d_min = 0
     d_max = 0
     for i in range(n_samples):
-        for j in range(n_samples):
+        for j in range(i,n_samples):
             d[i][j] = math.sqrt(sqdist(samples.toarray()[i],samples.toarray()[j]))
+            d[j][i] = d[i][j]
             if d[i][j] < d_min:
                 d_min = d[i][j]
             if d[i][j] > d_max:
@@ -95,25 +103,21 @@ def euclidean_sim(samples):
     for i in range(n_samples):
         for j in range(n_samples):
             d[i][j] = 1-(d[i][j]-d_min)/(d_max-d_min)
+    print("euclidean_sim_end")
     return d
 
-#compute euclidean similarity matrix with indexes sorted according to order
-def euclidean_sim(samples, order):
-    n_samples = samples.shape[0]
+#reorder euclidean similarity matrix with indexes sorted according to order
+def reorder_sim(sim, order):
+    print("reorder_sim_begin (with indexes sorted according to order)")
+    n_samples = sim.shape[0]
     d = np.zeros((n_samples,n_samples))
     d_min = 0
     d_max = 0
     for i in range(n_samples):
-        for j in range(n_samples):
-            d[i][j] = math.sqrt(sqdist(samples.toarray()[order[i]],samples.toarray()[order[j]]))
-            if d[i][j] < d_min:
-                d_min = d[i][j]
-            if d[i][j] > d_max:
-                d_max = d[i][j]
-            
-    for i in range(n_samples):
-        for j in range(n_samples):
-            d[i][j] = 1-(d[i][j]-d_min)/(d_max-d_min)
+        for j in range(i,n_samples):
+            d[i][j] = sim[order[i]][order[j]]
+            d[j][i] = d[i][j]
+    print("reorder_sim_end (with indexes sorted according to order)")
     return d
 
 #TODO Graph visualization
@@ -140,13 +144,14 @@ def sqdist(sample,centroid):
 #TODO needs cleanup
 #FIXME unable to graphically identify various traces when number is very large
 def show_sim_matrix_proc_vm(proc_vm_label, samples_vm, cl_vm, vm_list, samples_proc, cl_proc, vmpid_list):
+    print("show_sim_matrix_proc_vm")
     #sort samples with respect to labels
     sil = cl_proc[1]['total silhouette']
     name = 'KMEANS_Proc{}_VM{}'.format(max(cl_proc[0])+1,max(cl_vm[0])+1) #TODO generalize for other clusterings besides KMEANS
     labels = cl_proc[0]
     order = np.argsort(labels).tolist() 
     #compute similarity matrix
-    d = euclidean_sim(samples_proc, order)
+    d = reorder_sim(samples_proc, order)
     new_vmpid_list = list(vmpid_list)     
     print("show_sim_matrix_proc_vm_begin")
     new_vmpid_list = \
@@ -179,14 +184,16 @@ def show_sim_matrix_proc_vm(proc_vm_label, samples_vm, cl_vm, vm_list, samples_p
     return 
     
 
-
-def show_sim_matrix(samples,labels,vmpid_list,name,sil):
+#FIXME unable to graphically identify various traces when number is very large
+def show_sim_matrix(sim,labels,vmpid_list,name,sil):
+    print("show_sim_matrix")
     #sort samples with respect to labels
     order = np.argsort(labels).tolist() 
     #compute similarity matrix
-    d = euclidean_sim(samples, order)        
+    d = reorder_sim(sim, order)        
     vmpid_list = [vmpid_list[i]+'['+str(labels[i])+']' for i in order] #concatenate cluster labels to vmpid name
     #plot it
+    print("start plot...")
     fig, ax = plt.subplots()
     cax = ax.imshow(d, interpolation='nearest', cmap=cm.coolwarm)
     ax.set_title(name+'\n'+'Similarity Matrix'+' (Silhouette = '+str(sil)+')')
@@ -207,7 +214,11 @@ def show_sim_matrix(samples,labels,vmpid_list,name,sil):
     #fig.tight_layout()  # otherwise the right y-label is slightly clipped
     #plt.ion() #turn on interactive mode so execution does not block on show()
     plt.savefig("/home/azhari/temp/"+name+".png", dpi=150, bbox_inches='tight')
-    plt.show()
+    ##plt.show()
+    #also output clusters to text file
+    #with open("/home/azhari/temp/"+name+".Clusters",'w') as outputF:
+    #    for line in vmpid_list:
+    #        outputF.write(line+'\n')
     #from io import BytesIO
     
     return 
@@ -215,7 +226,7 @@ def show_sim_matrix(samples,labels,vmpid_list,name,sil):
 #performs kmeans clustering on a list of samples
 #inparams: a dict of input parameters
 def kmeans_clustering(samples, inparams):
-    #print("kmeans_clustering_begin",samples.toarray(),inparams)
+    print("kmeans_clustering_begin",samples.shape[0])
     n = min (inparams['n_clusters'], samples.shape[0]) #number of clusters never larger than number of samples
     cl = KMeans(n_clusters=n, init='k-means++', max_iter=300, n_init=100, random_state=None)
     cl.fit(samples)
@@ -243,7 +254,7 @@ def kmeans_clustering(samples, inparams):
         #print("SILHOUTTE",s_sil)
         sil = silhouette_score(samples.toarray(),cl.labels_)
     outparams = {'sample silhouette':s_sil,'total silhouette':sil,'total ssb':ssb,'cluster size':c_n,'centroids':cl.cluster_centers_, 'total sse':cl.inertia_, 'cluster sse':c_sse, 'squared distance':d}
-    #print("kmeans_clustering_end")
+    print("kmeans_clustering_end")
     return cl.labels_, outparams 
     
 #TODO
@@ -405,11 +416,13 @@ class Vectorizer(Command):
                 d_proc = {}
                 avgvec_proc = {}
                 fvec_proc = {}
+                tracet_proc = {} #trace time
                 prvec_proc = {} #Process preemption vector VM/VM, VM/Host, VM_internal_processes, VM_internal_threads
                 exvec_proc = {} #Process exit vector 0:64 exit reasons
                 d_vcpu = {}
                 avgvec_vcpu = {}
                 fvec_vcpu = {}
+                tracet_vcpu = {} #trace time
                 prvec_vcpu = {} #VM preemption vector VM/VM, VM/Host, VM_internal_processes, VM_internal_threads
                 exvec_vcpu = {} #exit vector 0:64 exit reasons
                 #process all experiments >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -448,55 +461,57 @@ class Vectorizer(Command):
                              open(procExitFileName,'r') as procExitF:
                             #returns dictionary with key = VMID/PID and values = wait times and frequencies all in one list
                             #TODO change vectorize_vcpu to a generic vectorize
-                            d_proc, avgvec_proc, fvec_proc, prvec_proc, exvec_proc = \
-                                vectorize_vcpu(procAvgF,procFreqF,procPreemptF,procExitF,traceName,d_proc,avgvec_proc,fvec_proc,prvec_proc,exvec_proc)
+                            d_proc, avgvec_proc, fvec_proc, prvec_proc, exvec_proc, tracet_proc = \
+                                vectorize_vcpu(procAvgF,procFreqF,procPreemptF,procExitF,traceName,d_proc,avgvec_proc,fvec_proc,prvec_proc,exvec_proc,tracet_proc)
                                 
-                            d_vcpu, avgvec_vcpu, fvec_vcpu, prvec_vcpu, exvec_vcpu = \
-                                vectorize_vcpu(vcpuAvgF,vcpuFreqF,vcpuPreemptF,vcpuExitF,traceName,d_vcpu,avgvec_vcpu,fvec_vcpu,prvec_vcpu,exvec_vcpu)
+                            d_vcpu, avgvec_vcpu, fvec_vcpu, prvec_vcpu, exvec_vcpu, tracet_vcpu = \
+                                vectorize_vcpu(vcpuAvgF,vcpuFreqF,vcpuPreemptF,vcpuExitF,traceName,d_vcpu,avgvec_vcpu,fvec_vcpu,prvec_vcpu,exvec_vcpu,tracet_vcpu)
                             #no clustering just output feature vectors
-                            feature_vector_table = \
-                                self._get_proc_feature_vector_result_table(period_data,begin_ns, end_ns, \
-                                                                           traceName, d_proc, avgvec_proc, fvec_proc, prvec_proc, exvec_proc)
-                            self._mi_append_result_table(feature_vector_table)
-                            #feature_vector_table = 
-                            #    self._get_vcpu_feature_vector_result_table(period_data,begin_ns, end_ns, 
-                            #                                               traceName, d_vcpu, avgvec_vcpu, fvec_vcpu, prvec_vcpu, exvec_vcpu)
-                            #self._mi_append_result_table(feature_vector_table)
-                            names, clusters, samples, clustering_table, rvec_proc = \
-                                get_clusters(self, traceName, d_proc, avgvec_proc, fvec_proc, prvec_proc, exvec_proc,\
-                                d_vcpu, avgvec_vcpu, fvec_vcpu, prvec_vcpu, exvec_vcpu,\
-                                alg_list, self._args, begin_ns, end_ns)
-                            if clusters != None:
-                                self._mi_append_result_table(clustering_table)
+                            ##feature_vector_table = \
+                            ##    self._get_proc_feature_vector_result_table(period_data,begin_ns, end_ns, \
+                            ##                                               traceName, d_proc, avgvec_proc, fvec_proc, prvec_proc, exvec_proc)
+                            ##self._mi_append_result_table(feature_vector_table)
+                            ##feature_vector_table = 
+                            ##    self._get_vcpu_feature_vector_result_table(period_data,begin_ns, end_ns, 
+                            ##                                               traceName, d_vcpu, avgvec_vcpu, fvec_vcpu, prvec_vcpu, exvec_vcpu)
+                            ##self._mi_append_result_table(feature_vector_table)
+                            ##names, clusters, samples, clustering_table, rvec_proc = \
+                            ##    get_clusters(self, traceName, d_proc, avgvec_proc, fvec_proc, prvec_proc, exvec_proc,\
+                            ##    d_vcpu, avgvec_vcpu, fvec_vcpu, prvec_vcpu, exvec_vcpu,\
+                            ##    alg_list, self._args, begin_ns, end_ns)
+                            ##if clusters != None:
+                            ##    self._mi_append_result_table(clustering_table)
                     #end-for iterate over time_set <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
                 #end-for process all experiments <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
                 names, clusters, samples, clustering_table, rvec_proc = \
-                    get_clusters(self, '', d_proc, avgvec_proc, fvec_proc, prvec_proc, exvec_proc,\
-                        d_vcpu, avgvec_vcpu, fvec_vcpu, prvec_vcpu, exvec_vcpu,\
+                    get_clusters(self, '', d_proc, avgvec_proc, fvec_proc, prvec_proc, exvec_proc, tracet_proc,\
+                        d_vcpu, avgvec_vcpu, fvec_vcpu, prvec_vcpu, exvec_vcpu, tracet_vcpu,\
                         alg_list, self._args, begin_ns, end_ns)
 
-                if clusters != None: 
-                    self._mi_append_result_table(clustering_table)
+                #get_random_data(samples.shape[0], samples.shape[1], alg_list, self._args)
+                
+                ##if clusters != None: 
+                ##    self._mi_append_result_table(clustering_table)
                                  
-                feature_vector_table = \
-                        self._get_proc_feature_vector_result_table(period_data,begin_ns, end_ns, \
-                                                                   '', d_proc, avgvec_proc, fvec_proc, prvec_proc, exvec_proc) #absolute frequency i.e., count
-                self._mi_append_result_table(feature_vector_table)
+                ##feature_vector_table = \
+                ##        self._get_proc_feature_vector_result_table(period_data,begin_ns, end_ns, \
+                ##                                                   '', d_proc, avgvec_proc, fvec_proc, prvec_proc, exvec_proc) #absolute frequency i.e., count
+                ##self._mi_append_result_table(feature_vector_table)
                 #feature_vector_table = 
                 #        self._get_vcpu_feature_vector_result_table(period_data,begin_ns, end_ns, 
                 #                                                   '', d_vcpu, avgvec_vcpu, fvec_vcpu, prvec_vcpu, exvec_vcpu)
                 #self._mi_append_result_table(feature_vector_table)
 
-                if self._args.rate == True:
-                    feature_vector_table = \
-                        self._get_proc_feature_vector_result_table(period_data,begin_ns, end_ns, '', \
-                            d_proc, avgvec_proc, rvec_proc, prvec_proc, exvec_proc) #rate vector
-                    self._mi_append_result_table(feature_vector_table)             
+                ##if self._args.rate == True:
+                ##    feature_vector_table = \
+                ##        self._get_proc_feature_vector_result_table(period_data,begin_ns, end_ns, '', \
+                ##            d_proc, avgvec_proc, rvec_proc, prvec_proc, exvec_proc) #rate vector
+                ##    self._mi_append_result_table(feature_vector_table)             
                        
 
-        else: #non LAMI mode
-            self._print_feature_vector(feature_vector_table)
+        ##else: #non LAMI mode
+        ##    self._print_feature_vector(feature_vector_table)
 
     #this is called after analysis is finished by the base class Command to create a summary table if required
     #to be overridden by subclasses 
@@ -591,6 +606,26 @@ class Vectorizer(Command):
     def _add_arguments(self, ap):
         Command._add_vectorizer_args(ap)        
     
+def get_random_data(n_samples, n_features, alg_list, args):
+    print("get_random_data_begin", n_samples, n_features, alg_list)
+    data = np.random.rand(n_samples, n_features)
+    transformer = TfidfTransformer(norm=args.norm, smooth_idf=False, sublinear_tf=False, use_idf=False)
+    data = transformer.fit_transform(data)
+    cl = {} 
+    trace_list = ['rnd{}'.format(i) for i in range(n_samples)] 
+    
+    sim = euclidean_sim(data)
+    #data = data.toarray()
+
+    for alg in alg_list: 
+        func = Clustering.switcher.value.get(alg[0].value)
+        c, param = func(data,alg[1]) #execute clustering algorithm over samples with alg[1] as inparams
+        # c = list of cluster labels, where samples are ordered as in filtered_vmpid_list
+        cl[ alg[2] ] = (c,param)
+
+        #plot similarity matrix
+        show_sim_matrix(sim,c,trace_list,'RAND_'+alg[2],param['total silhouette'])
+
 
 #traceName is in this format: 'traceFileName:timestamp'
 def vectorize_proc(avgF,freqF,traceName,d,avgvec,fvec):
@@ -632,7 +667,9 @@ def vectorize_proc(avgF,freqF,traceName,d,avgvec,fvec):
 
 
 #traceName is in this format: 'traceFileName:timestamp'
-def vectorize_vcpu(avgF,freqF,preemptF,exitF,traceName,d,avgvec,fvec,prvec,exvec):
+#TODO get total trace time from first line of Avgdur.vector
+#TODO use exectime of entry as new feature
+def vectorize_vcpu(avgF,freqF,preemptF,exitF,traceName,d,avgvec,fvec,prvec,exvec,traceTime):
     print('vectorize_vcpu_begin:',traceName)
     avglines = avgF.readlines()
     freqlines = freqF.readlines()
@@ -640,6 +677,8 @@ def vectorize_vcpu(avgF,freqF,preemptF,exitF,traceName,d,avgvec,fvec,prvec,exvec
     exlines = exitF.readlines()
     avglines = [a.replace('\n','') for a in avglines]
     freqlines = [a.replace('\n','') for a in freqlines]
+    traceT = int(avglines[0]) #get total trace time from first line of Avgdur.vector
+    avglines = avglines[1:] #save the rest as average duration data
        
     if len(prlines) < len(avglines):
         print("WARNING IN DATA: mismatch in number of entries",traceName)
@@ -715,6 +754,7 @@ def vectorize_vcpu(avgF,freqF,preemptF,exitF,traceName,d,avgvec,fvec,prvec,exvec
         pr[6] = int(tmpd[vmvcpu][22]) #Inj_disk: when a disk interrupt is injected to process/VM
         pr[7] = int(tmpd[vmvcpu][23]) #Inj_net: when a net interrupt is injected to process/VM
         
+        traceTime[vmvcpu] = np.array([traceT]) #store as an array of size 1 to be consistent with other vectors
         avgvec[vmvcpu] = avg
         fvec[vmvcpu] = f
         prvec[vmvcpu] = pr
@@ -725,7 +765,7 @@ def vectorize_vcpu(avgF,freqF,preemptF,exitF,traceName,d,avgvec,fvec,prvec,exvec
         
           
     print('vectorize_vcpu_end:',traceName)
-    return d, avgvec, fvec, prvec, exvec  
+    return d, avgvec, fvec, prvec, exvec, traceTime 
 
 # (weighted) sum of all rows belonging to a VM and returns the resulting vector
 # input parameters:
@@ -854,8 +894,8 @@ def create_sample_matrix(sample_tuple, norm_type):
 
 
 #TODO add input params for prvec_proc and exvec_proc
-def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_proc, exvec_proc,\
-                d_vcpu, avgvec_vcpu, fvec_vcpu, prvec_vcpu, exvec_vcpu, alg_list, args, begin_ns, end_ns):
+def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_proc, exvec_proc, tracet_proc,\
+                d_vcpu, avgvec_vcpu, fvec_vcpu, prvec_vcpu, exvec_vcpu, tracet_vcpu, alg_list, args, begin_ns, end_ns):
     print("get_clusters_begin",traceName)
     if traceName == '': #aggregate of all traces
         vmpid_list = d_proc.keys() #needs to be overwritten after collapse_vm_samples
@@ -870,11 +910,13 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_pr
     #(TIMER,DISK,NET,TASK,OTHER,NON_ROOT,ROOT,IDLE,L0_PREEMPTION)
     f_proc_index = [] #will eventually contain index number for feature to be included in analysis
     w_proc_index = []
+    exec_proc_index = []
     pr_proc_index = [] #will eventually contain index number for feature to be included in analysis
     ex_proc_index = [] #will eventually contain index number for feature to be included in analysis
 
     f_vcpu_index = [] #will eventually contain index number for feature to be included in analysis
     w_vcpu_index = []
+    exec_vcpu_index = []
     pr_vcpu_index = [] #will eventually contain index number for feature to be included in analysis
     ex_vcpu_index = [] #will eventually contain index number for feature to be included in analysis
     
@@ -892,6 +934,7 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_pr
         elif feature[0] == '*':
             f_proc_index = list(range(max(index.values())+1)) #max number of features obtained from index dict
             w_proc_index = list(range(max(index.values())+1))
+            exec_proc_index = [0] 
             pr_proc_index = list(range(max(prindex.values())+1))
             ex_proc_index = list(range(65))
         
@@ -909,12 +952,15 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_pr
                 f_proc_index.append(index[feature])
             if feature[0] == 'w':
                 w_proc_index.append(index[feature])
+            if feature[0] == 'x': #execution time (just x)
+                exec_proc_index = [0]
             if feature[0] == 'p':
                 pr_proc_index.append(prindex[feature])
             if feature[0] == 'e':
                 for ex_reason in feature[1:].split('.'):
                     ex_proc_index.append(int(ex_reason))
     
+    print("--vcpu: vcpu base feature selection")
     #--vcpu: vcpu base feature selection consisting only of timer/net/disk/task/other/root/non-root/l0 waits
     #TODO refactor into a function 
     for feature in args.vcpu.split(','): 
@@ -923,6 +969,7 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_pr
         elif feature[0] == '*':
             f_vcpu_index = list(range(max(index.values())+1)) #max number of features obtained from index dict
             w_vcpu_index = list(range(max(index.values())+1))
+            exec_vcpu_index = [0]
             pr_vcpu_index = list(range(max(prindex.values())+1))
             ex_vcpu_index = list(range(65))
         
@@ -940,6 +987,8 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_pr
                 f_vcpu_index.append(index[feature])
             if feature[0] == 'w':
                 w_vcpu_index.append(index[feature])
+            if feature == 'xe': #execution time (j xe)
+                exec_vcpu_index = [0]
             if feature[0] == 'p':
                 pr_vcpu_index.append(prindex[feature])
             if feature[0] == 'e':
@@ -948,22 +997,25 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_pr
                     
                     
     print("Selected indices:")
-    print("Proc:",f_proc_index, w_proc_index, pr_proc_index, ex_proc_index)
-    print("vCPU:",f_vcpu_index, w_vcpu_index, pr_vcpu_index, ex_vcpu_index)
+    print("Proc:",f_proc_index, w_proc_index, pr_proc_index, ex_proc_index, exec_proc_index)
+    print("vCPU:",f_vcpu_index, w_vcpu_index, pr_vcpu_index, ex_vcpu_index, exec_vcpu_index)
 
     rvec_proc = {}
-    execvec_proc = {} #dict holding total execution time per VM/process in msec
+    execvec_proc = {} #dict holding total execution time per VM/process in nsec
     rvec_pr_proc = {}
     rvec_ex_proc = {}
+    rvec_exec_proc = {}
 
     rvec_vcpu = {}
-    execvec_vcpu = {} #dict holding total execution time per VM/vCPU in msec
+    execvec_vcpu = {} #dict holding total execution time per VM/vCPU in nsec
     rvec_pr_vcpu = {}
     rvec_ex_vcpu = {}
+    rvec_exec_vcpu = {}
     #TODO refactor into one function call per proc and vcpu
     for vmpid in vmpid_list:
         exec_time = (avgvec_proc[vmpid][5]*fvec_proc[vmpid][5]+avgvec_proc[vmpid][6]*fvec_proc[vmpid][6])
-        execvec_proc[vmpid] = exec_time / 1000000
+        execvec_proc[vmpid] = exec_time
+        rvec_exec_proc[vmpid] = execvec_proc[vmpid] / tracet_proc[vmpid] #execution time as fraction of trace time
         if exec_time == 0:
             print('WARNING: Zero execution time in: ', vmpid)
             if fvec_proc[vmpid][0:7].any():
@@ -979,7 +1031,8 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_pr
      
     for vmvcpu in vmvcpu_list:
         exec_time = (avgvec_vcpu[vmvcpu][5]*fvec_vcpu[vmvcpu][5]+avgvec_vcpu[vmvcpu][6]*fvec_vcpu[vmvcpu][6])
-        execvec_vcpu[vmvcpu] = exec_time / 1000000
+        execvec_vcpu[vmvcpu] = exec_time
+        rvec_exec_vcpu[vmvcpu] = execvec_vcpu[vmvcpu] / tracet_vcpu[vmvcpu] #execution time as fraction of trace time
         if exec_time == 0:
             print(vmvcpu, 'INFO: Zero execution time !!!')
             if fvec_vcpu[vmvcpu][0:7].any():
@@ -1004,27 +1057,31 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_pr
             rvec_proc[vmpid] = fvec_proc[vmpid]
             rvec_pr_proc[vmpid] = prvec_proc[vmpid]
             rvec_ex_proc[vmpid] = exvec_proc[vmpid]
+            rvec_exec_proc[vmpid] = execvec_proc[vmpid]
         for vmvcpu in vmvcpu_list:
             rvec_vcpu[vmvcpu] = fvec_vcpu[vmvcpu]
             rvec_pr_vcpu[vmvcpu] = prvec_vcpu[vmvcpu]
             rvec_ex_vcpu[vmvcpu] = exvec_vcpu[vmvcpu]
+            rvec_exec_vcpu[vmvcpu] = execvec_vcpu[vmvcpu]
 
     
     filtered_vmpid_list, fl_out = filter_samples(args.top, f_proc_index, list(vmpid_list), rvec_proc, max(index.values())+1 )
     fl, fl_out = filter_samples(args.top, w_proc_index, fl_out, avgvec_proc, max(index.values())+1 )
     filtered_vmpid_list = filtered_vmpid_list + fl
-    fl, fl_out = filter_samples(0, pr_proc_index, fl_out, rvec_pr_proc, max(prindex.values())+1 )
+    fl, fl_out = filter_samples(args.top, pr_proc_index, fl_out, rvec_pr_proc, max(prindex.values())+1 )
     filtered_vmpid_list = filtered_vmpid_list + fl
     #print(filtered_vmpid_list, fl_out)
-    fl, fl_out = filter_samples(0, ex_proc_index, fl_out, rvec_ex_proc, 65)
+    fl, fl_out = filter_samples(args.top, ex_proc_index, fl_out, rvec_ex_proc, 65)
+    filtered_vmpid_list = filtered_vmpid_list + fl
+    fl, fl_out = filter_samples(args.top, exec_proc_index, fl_out, rvec_exec_proc, 1)
     filtered_vmpid_list = filtered_vmpid_list + fl
     #print(filtered_vmpid_list, fl_out)
     #print("*********")
-    (f_proc_samples, w_proc_samples, pr_proc_samples, ex_proc_samples) = \
+    (f_proc_samples, w_proc_samples, pr_proc_samples, ex_proc_samples, exec_proc_samples) = \
         create_vectors(\
             filtered_vmpid_list, \
-            (rvec_proc, avgvec_proc, rvec_pr_proc, rvec_ex_proc), \
-            (f_proc_index, w_proc_index, pr_proc_index, ex_proc_index), \
+            (rvec_proc, avgvec_proc, rvec_pr_proc, rvec_ex_proc, rvec_exec_proc), \
+            (f_proc_index, w_proc_index, pr_proc_index, ex_proc_index, exec_proc_index), \
             args.norm \
             )
     
@@ -1036,7 +1093,7 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_pr
         rvec_prvm = collapse_vm_samples(rvec_pr_vcpu)
         #print(rvec_prvm.keys())
         rvec_exvm = collapse_vm_samples(rvec_ex_vcpu)
-        execvec_vm = collapse_vm_samples(execvec_vcpu) #total execution time over all vCPUs (in msec)
+        rvec_exec_vm = collapse_vm_samples(rvec_exec_vcpu) #total execution time over all vCPUs
         vm_list = rvec_vm.keys()
         
         #print("*********")
@@ -1052,13 +1109,15 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_pr
         #print(filtered_vm_list, fl_out)
         fl, fl_out = filter_samples(0, ex_vcpu_index, fl_out, rvec_exvm, 65)
         filtered_vm_list = filtered_vm_list + fl
+        fl, fl_out = filter_samples(0, exec_vcpu_index, fl_out, rvec_exec_vm, 1)
+        filtered_vm_list = filtered_vm_list + fl
         #print(filtered_vm_list, fl_out)
         #print("*********")
-        (f_vm_samples, w_vm_samples, pr_vm_samples, ex_vm_samples) = \
+        (f_vm_samples, w_vm_samples, pr_vm_samples, ex_vm_samples, exec_vm_samples) = \
                 create_vectors(\
                 filtered_vm_list, \
-                (rvec_vm, avgvec_vm, rvec_prvm, rvec_exvm), \
-                (f_vcpu_index, w_vcpu_index, pr_vcpu_index, ex_vcpu_index), \
+                (rvec_vm, avgvec_vm, rvec_prvm, rvec_exvm, rvec_exec_vm), \
+                (f_vcpu_index, w_vcpu_index, pr_vcpu_index, ex_vcpu_index, exec_vcpu_index), \
                 args.norm \
                 )
     
@@ -1066,23 +1125,32 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_pr
         return None, None, None, None
     
     if len(filtered_vmpid_list) != 0:
-        samples_proc = create_sample_matrix( (f_proc_samples, w_proc_samples, pr_proc_samples, ex_proc_samples), args.norm )
+        samples_proc = create_sample_matrix( (f_proc_samples, w_proc_samples, pr_proc_samples, ex_proc_samples, exec_proc_samples), args.norm )
+        #now compute similarity matrix among samples
+        #TODO run on a separate thread and join
+        sim_proc = euclidean_sim(samples_proc)
 
     if len(filtered_vm_list) != 0:       
-        samples_vm = create_sample_matrix( (f_vm_samples, w_vm_samples, pr_vm_samples, ex_vm_samples), args.norm )
+        samples_vm = create_sample_matrix( (f_vm_samples, w_vm_samples, pr_vm_samples, ex_vm_samples, exec_vm_samples), args.norm )
+        #now compute similarity matrix among samples
+        #TODO run on a separate thread and join
+        sim_vm = euclidean_sim(samples_vm)
     #build sample matrix out of feature vectors end <<<<<<<<<<<<<<<<<<<<<<<<<<<
+    
     
     #compute clustering and create result table begin >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     cl_proc = {} #for processXXXX.vector files
-    for alg in alg_list: 
-        func = Clustering.switcher.value.get(alg[0].value)
-        c, param = func(samples_proc,alg[1]) #execute clustering algorithm over samples with alg[1] as inparams
-        # c = list of cluster labels, where samples are ordered as in filtered_vmpid_list
-        cl_proc[ alg[2] ] = (c,param)
+    if len(filtered_vmpid_list) != 0:
+        for alg in alg_list: 
+            func = Clustering.switcher.value.get(alg[0].value)
+            c, param = func(samples_proc,alg[1]) #execute clustering algorithm over samples with alg[1] as inparams
+            # c = list of cluster labels, where samples are ordered as in filtered_vmpid_list
+            cl_proc[ alg[2] ] = (c,param)
 
-        #plot similarity matrix
-        if traceName == '':
-            show_sim_matrix(samples_proc,c,filtered_vmpid_list,'Proc_'+alg[2],param['total silhouette'])
+            #plot similarity matrix
+            #TODO in multithreaded version showing similarity matrix can be performed on a different thread along with sim mat computation after computing all clusters
+            if traceName == '':
+                show_sim_matrix(sim_proc,c,filtered_vmpid_list,'Proc_'+alg[2],param['total silhouette'])
 
     cl = cl_proc
     
@@ -1095,7 +1163,7 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_pr
     
             #plot similarity matrix
             if traceName == '':
-                show_sim_matrix(samples_vm,c,filtered_vm_list,'VM_'+alg[2],param['total silhouette'])
+                show_sim_matrix(sim_vm,c,filtered_vm_list,'VM_'+alg[2],param['total silhouette'])
 
 
     #overall best VM and Proc clustering results
@@ -1123,7 +1191,8 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_pr
             jj = jj + 1
         
         print(proc_vm_label)
-        show_sim_matrix_proc_vm(proc_vm_label, samples_vm, cl_vm[max_sil_vm_key], filtered_vm_list, samples_proc, cl_proc[max_sil_proc_key], filtered_vmpid_list)
+        ##TODO fix so that uses sim_proc,sim_vm as input: show_sim_matrix_proc_vm(proc_vm_label, samples_vm, cl_vm[max_sil_vm_key], filtered_vm_list, samples_proc, cl_proc[max_sil_proc_key], filtered_vmpid_list)
+
         #show clustering results for procXXXX.vector files
 #        show_clustering_results(title = 'VM Clustering',\
 #            col_infos = col_infos_vm,\
