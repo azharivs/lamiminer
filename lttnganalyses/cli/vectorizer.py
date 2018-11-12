@@ -93,7 +93,7 @@ def euclidean_sim(samples):
     d_max = 0
     for i in range(n_samples):
         for j in range(i,n_samples):
-            d[i][j] = (sqdist(samples.toarray()[i],samples.toarray()[j]))**(1/10)
+            d[i][j] = (sqdist(samples.toarray()[i],samples.toarray()[j]))**(1/2)
             d[j][i] = d[i][j]
             if d[i][j] < d_min:
                 d_min = d[i][j]
@@ -120,6 +120,20 @@ def reorder_sim(sim, order):
     print("reorder_sim_end (with indexes sorted according to order)")
     return d
 
+#reorder and filter euclidean similarity matrix with indexes sorted according to order
+def reorder_sim_filter(sim, order):
+    print("reorder_sim_filter_begin (with indexes sorted according to order)")
+    n_samples = len(order)
+    d = np.zeros((n_samples,n_samples))
+    d_min = 0
+    d_max = 0
+    for i in range(n_samples):
+        for j in range(i,n_samples):
+            d[i][j] = sim[order[i]][order[j]]
+            d[j][i] = d[i][j]
+    print("reorder_sim_filter_end (with indexes sorted according to order)")
+    return d
+
 #TODO Graph visualization
 def graph_viz(samples, similarity, vertex_label,
     threshold, edge_label=None, 
@@ -139,7 +153,7 @@ def graph_viz(samples, similarity, vertex_label,
 #compute squared euclidean distance between two arrays
 #sample is a numpy array
 def sqdist(sample,centroid):
-    return functools.reduce(lambda x,y:x+y, (sample-centroid)**10)
+    return functools.reduce(lambda x,y:x+y, (sample-centroid)**2)
 
 #TODO needs cleanup
 #FIXME unable to graphically identify various traces when number is very large
@@ -185,9 +199,15 @@ def show_sim_matrix_proc_vm(proc_vm_label, samples_vm, cl_vm, vm_list, samples_p
     
 
 #FIXME unable to graphically identify various traces when number is very large
-def show_sim_matrix(sim,labels,vmpid_list,name,sil,centroids, samples, legend = None):
+#TODO refactor: too much stuff is done here
+def show_sim_matrix(sim, vmpid_list, name, samples, cl, legend = None):
     print("show_sim_matrix")
     arrsamples = samples.toarray()
+    labels = cl[0]
+    centroids = cl[1]['centroids']
+    sil = cl[1]['total silhouette']
+    c_sil = cl[1]['cluster silhouette']
+    c_stderr = cl[1]['cluster stderr']
     #sort samples with respect to labels
     order = np.argsort(labels).tolist() 
     #compute similarity matrix
@@ -216,7 +236,7 @@ def show_sim_matrix(sim,labels,vmpid_list,name,sil,centroids, samples, legend = 
     #plt.ion() #turn on interactive mode so execution does not block on show()
     plt.savefig("/home/azhari/temp/"+name+".png", dpi=150, bbox_inches='tight')
     ##plt.show()
-    #also output centroids to text file
+    #also output centroids to text file -------------------------
     with open("/home/azhari/temp/"+name+".centroids",'w') as centF:
         if legend != None:
             line = '          \t'
@@ -229,7 +249,55 @@ def show_sim_matrix(sim,labels,vmpid_list,name,sil,centroids, samples, legend = 
                 line = line + "{0:.3f}\t\t".format(centroids[i][j])
             line = line + '\n'
             centF.write(line)
-                
+    
+    #------------- centroids stacked bar chart -------------------------------
+    print("------------- centroids stacked bar chart -------------------------------")
+    plt.subplots()
+    p = []
+    ind = np.arange(centroids.shape[0])
+    lft = np.zeros(centroids.shape[0])
+    for i in range(centroids.shape[1]): #loop column wise over features
+        tmp = plt.barh(ind, centroids[:,i], height = 0.35, align = 'center', left = lft, color = colors[i])
+        lft = lft + centroids[:,i]
+        #print(lft)
+        p.append(tmp[0])
+    plt.xlabel('Normalized Usage')
+    plt.title('VM Prototype Usage Patterns '+name)
+    plt.yticks(ind, ['C{}'.format(i) for i in range(centroids.shape[0])])
+    plt.xticks(np.arange(0,3,0.5))
+    if legend != None:
+        plt.legend(p, legend)    
+    plt.savefig("/home/azhari/temp/"+name+"_centroids.png", dpi=150, bbox_inches='tight')
+    
+    #------------- clusters silhouette bar chart -------------------------------
+    print("------------- clusters silhouette bar chart -------------------------------")
+    plt.subplots()
+    p = []
+    ind = np.arange(centroids.shape[0])
+    tmp = plt.bar(ind, c_sil, width = 0.35, align = 'center', color = colors[i])
+    p.append(tmp[0])
+    plt.title('Cluster Silhouette '+name)
+    plt.xticks(ind, ['C{}'.format(i) for i in range(centroids.shape[0])])
+    #plt.xticks(np.arange(0,3,0.5))
+    if legend != None:
+        plt.legend(p, legend)    
+    plt.savefig("/home/azhari/temp/"+name+"_sil.png", dpi=150, bbox_inches='tight')
+    
+    #------------- clusters standard error bar chart -------------------------------
+    print("------------- clusters standard error bar chart -------------------------------")
+    plt.subplots()
+    p = []
+    ind = np.arange(centroids.shape[0])
+    tmp = plt.bar(ind, c_stderr, width = 0.35, align = 'center', color = colors[i])
+    p.append(tmp[0])
+    plt.title('Cluster Standard Error '+name)
+    plt.xticks(ind, ['C{}'.format(i) for i in range(centroids.shape[0])])
+    #plt.xticks(np.arange(0,3,0.5))
+    if legend != None:
+        plt.legend(p, legend)    
+    plt.savefig("/home/azhari/temp/"+name+"_stderr.png", dpi=150, bbox_inches='tight')
+    
+    #------------------ clusters membership text file --------------------------------            
     with open("/home/azhari/temp/"+name+".clusters",'w') as clF:
         if legend != None:
             line = ''
@@ -243,7 +311,130 @@ def show_sim_matrix(sim,labels,vmpid_list,name,sil,centroids, samples, legend = 
             line = line + vmpid_list[i]+'\n'
             clF.write(line)
     return 
+
+#filtered by cl_filter clustering
+#one plot of cl sim matrix per samples in same cluster of cl_filter    
+def show_sim_matrix_filter(sim, vmpid_list_orig, name, samples, cl, cl_filter, legend = None):
+    print("show_sim_matrix_filtered")
+    arrsamples = samples.toarray()
     
+    labels_ = cl[0]
+    centroids = cl[1]['centroids']
+    sil = cl[1]['total silhouette']
+    c_sil = cl[1]['cluster silhouette']
+    c_stderr = cl[1]['cluster stderr']
+    
+    labels_filter = cl_filter[0]
+    #sort samples with respect to labels
+    order_ = np.argsort(labels_).tolist() 
+    for c_filter in range(cl_filter[1]['centroids'].shape[0]):
+        print(c_filter)
+        order = [order_[i] for i in range(len(order_)) if labels_filter[order_[i]]==c_filter]
+        print(order)
+        #compute similarity matrix
+        d = reorder_sim_filter(sim, order)        
+        vmpid_list = [vmpid_list_orig[i]+'['+str(labels_[i])+']' for i in order] #concatenate cluster labels to vmpid name
+        labels = [labels_[i] for i in order]
+        #plot it
+        print("start plot...")
+        fig, ax = plt.subplots()
+        cax = ax.imshow(d, interpolation='nearest', cmap=cm.coolwarm)
+        ax.set_title(name+' Filtered by C{}\n'.format(c_filter)+'Similarity Matrix'+' (Silhouette = '+str(sil)+')')
+        ax.set_yticks(np.arange(len(vmpid_list)))
+        ax.set_xticks(np.arange(len(labels)))
+        ax.set_yticklabels(vmpid_list)
+        ax.set_xticklabels(sorted(labels))
+        #axr = ax.twinx()
+        #axr.set_yticks(np.arange(len(labels)))
+        #axr.set_yticklabels(sorted(labels))
+        #axr.imshow(d, interpolation='nearest', cmap=cm.coolwarm)
+    
+        #plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
+    
+        # Add colorbar, make sure to specify tick locations to match desired ticklabels
+        cbar = fig.colorbar(cax, ticks=[0, 0.25, 0.5, 0.75, 1])
+        cbar.ax.set_yticklabels(['< 0', '0.25', '0.5', '0.75', '> 1'])  # vertically oriented colorbar
+        #fig.tight_layout()  # otherwise the right y-label is slightly clipped
+        #plt.ion() #turn on interactive mode so execution does not block on show()
+        plt.savefig("/home/azhari/temp/"+name+"_filter_C{}.png".format(c_filter), dpi=150, bbox_inches='tight')
+        ##plt.show()
+        #also output centroids to text file -------------------------
+        with open("/home/azhari/temp/"+name+"_filter_C{}.centroids".format(c_filter),'w') as centF:
+            if legend != None:
+                line = '          \t'
+                for l in legend:
+                    line = line + l + '\t\t'
+                centF.write(line+'\n')
+            for i in range(centroids.shape[0]):
+                line = 'Cluster #{}\t'.format(i)
+                for j in range(centroids.shape[1]):
+                    line = line + "{0:.3f}\t\t".format(centroids[i][j])
+                line = line + '\n'
+                centF.write(line)
+        
+        #------------- centroids stacked bar chart -------------------------------
+        print("------------- centroids stacked bar chart -------------------------------")
+        plt.subplots()
+        p = []
+        ind = np.arange(centroids.shape[0])
+        lft = np.zeros(centroids.shape[0])
+        for i in range(centroids.shape[1]): #loop column wise over features
+            tmp = plt.barh(ind, centroids[:,i], height = 0.35, align = 'center', left = lft, color = colors[i])
+            lft = lft + centroids[:,i]
+            #print(lft)
+            p.append(tmp[0])
+        plt.xlabel('Normalized Usage')
+        plt.title('VM Prototype Usage Patterns '+name)
+        plt.yticks(ind, ['C{}'.format(i) for i in range(centroids.shape[0])])
+        plt.xticks(np.arange(0,3,0.5))
+        if legend != None:
+            plt.legend(p, legend)    
+        plt.savefig("/home/azhari/temp/"+name+"_centroids_filter_C{}.png".format(c_filter), dpi=150, bbox_inches='tight')
+        
+        #------------- clusters silhouette bar chart -------------------------------
+        print("------------- clusters silhouette bar chart -------------------------------")
+        plt.subplots()
+        p = []
+        ind = np.arange(centroids.shape[0])
+        tmp = plt.bar(ind, c_sil, width = 0.35, align = 'center', color = colors[i])
+        p.append(tmp[0])
+        plt.title('Cluster Silhouette '+name)
+        plt.xticks(ind, ['C{}'.format(i) for i in range(centroids.shape[0])])
+        #plt.xticks(np.arange(0,3,0.5))
+        if legend != None:
+            plt.legend(p, legend)    
+        plt.savefig("/home/azhari/temp/"+name+"_sil_filter_C{}.png".format(c_filter), dpi=150, bbox_inches='tight')
+        
+        #------------- clusters standard error bar chart -------------------------------
+        print("------------- clusters standard error bar chart -------------------------------")
+        plt.subplots()
+        p = []
+        ind = np.arange(centroids.shape[0])
+        tmp = plt.bar(ind, c_stderr, width = 0.35, align = 'center', color = colors[i])
+        p.append(tmp[0])
+        plt.title('Cluster Standard Error '+name)
+        plt.xticks(ind, ['C{}'.format(i) for i in range(centroids.shape[0])])
+        #plt.xticks(np.arange(0,3,0.5))
+        if legend != None:
+            plt.legend(p, legend)    
+        plt.savefig("/home/azhari/temp/"+name+"_stderr_filter_C{}.png".format(c_filter), dpi=150, bbox_inches='tight')
+            
+        #------------------ clusters membership text file --------------------------------            
+        print("------------------ clusters membership text file --------------------------------")
+        with open("/home/azhari/temp/"+name+"_filter_C{}.clusters".format(c_filter),'w') as clF:
+            if legend != None:
+                line = ''
+                for l in legend:
+                    line = line + l + '\t\t'
+                clF.write(line+'\n')
+            for i in range(len(order)):
+                line = ''
+                for j in range(samples.shape[1]):
+                    line = line + "{0:.3f}\t\t".format(arrsamples[order[i]][j])
+                line = line + vmpid_list[i]+'\n'
+                clF.write(line)
+    return 
+
 #performs kmeans clustering on a list of samples
 #inparams: a dict of input parameters
 def kmeans_clustering(samples, inparams):
@@ -263,18 +454,24 @@ def kmeans_clustering(samples, inparams):
         for i in range(samples.shape[0]):
             if cl.labels_[i] == c:
                 c_sse[c] += d[i]
-
+                
+    c_stderr = [(c_sse[c]**(1/2))/c_n[c] for c in range(n)] #standard error for each cluster (standard deviation)
 #    print(cc,ssb)
     #TODO compute point wise and overall silhouette coeff
     #print("labels:",len(cl.labels_), max(cl.labels_))
     #print("samples:",samples.shape)
     s_sil = -1*np.ones(samples.shape[0]) #initialize to all negative (worst value)
+    c_sil = -1*np.ones(n) #initialize to all negative (worst value)
     sil = -1
     if (samples.shape[0] > n) and (max(cl.labels_) >= 1) : #if samples more than clusters and at least two clusters 
         s_sil = silhouette_samples(samples.toarray(),cl.labels_)
         #print("SILHOUTTE",s_sil)
+        for i in range(samples.shape[0]): #cluster silhouette
+            c_sil[cl.labels_[i]] += s_sil[i]
+        c_sil = [c_sil[i]/c_n[i] for i in range(n)]
+        c_sil = np.array(c_sil)
         sil = silhouette_score(samples.toarray(),cl.labels_)
-    outparams = {'sample silhouette':s_sil,'total silhouette':sil,'total ssb':ssb,'cluster size':c_n,'centroids':cl.cluster_centers_, 'total sse':cl.inertia_, 'cluster sse':c_sse, 'squared distance':d}
+    outparams = {'sample silhouette':s_sil,'cluster silhouette':c_sil,'total silhouette':sil,'total ssb':ssb,'cluster size':c_n,'centroids':cl.cluster_centers_, 'total sse':cl.inertia_, 'cluster sse':c_sse, 'squared distance':d, 'cluster stderr':c_stderr}
     print("kmeans_clustering_end")
     return cl.labels_, outparams 
     
@@ -645,6 +842,7 @@ def get_random_data(n_samples, n_features, alg_list, args):
         cl[ alg[2] ] = (c,param)
 
         #plot similarity matrix
+        #TODO change according for new signature
         show_sim_matrix(sim,c,trace_list,'RAND_'+alg[2],param['total silhouette'])
 
 
@@ -1183,7 +1381,7 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_pr
             #plot similarity matrix
             #TODO in multithreaded version showing similarity matrix can be performed on a different thread along with sim mat computation after computing all clusters
             if traceName == '':
-                show_sim_matrix(sim_proc,c,filtered_vmpid_list,'Proc_'+alg[2],param['total silhouette'],param['centroids'],samples_proc)
+                show_sim_matrix(sim_proc, filtered_vmpid_list, 'Proc_'+alg[2], samples_proc, cl_proc[ alg[2] ])
 
     cl = cl_proc
     
@@ -1196,8 +1394,10 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_pr
     
             #plot similarity matrix
             if traceName == '':
-                show_sim_matrix(sim_vm,c,filtered_vm_list,'VM_'+alg[2],param['total silhouette'],param['centroids'], samples_vm, legend_vm)
-
+                show_sim_matrix(sim_vm,filtered_vm_list,'VM_'+alg[2], samples_vm, cl_vm[ alg[2] ], legend_vm)
+        if ('KMEANS_3' in cl_vm.keys()) and ('KMEANS_15' in cl_vm.keys()):
+            print("Combination analysis KMEANS 3 and 15")
+            show_sim_matrix_filter(sim_vm,filtered_vm_list,'VM_'+alg[2], samples_vm, cl_vm[ 'KMEANS_15' ], cl_vm[ 'KMEANS_3' ], legend_vm)
 
     #overall best VM and Proc clustering results
     if (traceName == '') and (len(filtered_vm_list) != 0) and (len(filtered_vmpid_list) != 0):         
