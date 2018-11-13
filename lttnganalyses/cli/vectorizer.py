@@ -54,6 +54,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 from enum import Enum
 import numpy as np
+from scipy import sparse
 import functools
 import matplotlib.pyplot as plt
 from matplotlib import cm
@@ -1389,15 +1390,47 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_pr
         cl_vm = {} #for cpuXXXX files, where we have already collapsed all vCPUs to get a VM view
         for alg in alg_list: 
             func = Clustering.switcher.value.get(alg[0].value)
-            c, param = func(samples_vm,alg[1]) #execute clustering algorithm over samples with alg[1] as inparams
-            cl_vm[ alg[2] ] = (c,param)
-    
-            #plot similarity matrix
-            if traceName == '':
-                show_sim_matrix(sim_vm,filtered_vm_list,'VM_'+alg[2], samples_vm, cl_vm[ alg[2] ], legend_vm)
-        if ('KMEANS_3' in cl_vm.keys()) and ('KMEANS_15' in cl_vm.keys()):
-            print("Combination analysis KMEANS 3 and 15")
-            show_sim_matrix_filter(sim_vm,filtered_vm_list,'VM_'+alg[2], samples_vm, cl_vm[ 'KMEANS_15' ], cl_vm[ 'KMEANS_3' ], legend_vm)
+            if ('KMEANS_3' in cl_vm.keys()):
+                print("==================================")
+                labels_km3 = (cl_vm[ 'KMEANS_3' ][0]).tolist()
+                sim_vm_list = sim_vm.tolist()
+                print("*************************************")
+                for ii in range(3):
+                    alg2 = alg[2]+'_C{}'.format(ii)
+                    kk = 0
+                    samples_vm_flt = np.zeros((0,samples_vm.shape[1]))
+                    filtered_vm_list_new = []
+                    sim_vm_flt = []
+                    indx = []
+                    for jj in range(len(labels_km3)):
+                        if labels_km3[jj] == ii:
+                            #print("111111111111")#, samples_vm_flt, np.array([ samples_vm.toarray()[jj] ]) )
+                            samples_vm_flt = np.append(samples_vm_flt, np.array([ samples_vm.toarray()[jj] ]), 0)
+                            filtered_vm_list_new.append(filtered_vm_list[jj])
+                            indx.append(jj)
+                            kk += 1
+                    print(ii,":",indx)
+                    for rr in range(kk):
+                        sim_vm_flt.append([sim_vm_list[indx[rr]][indx[pp]] for pp in range(kk)])
+                        #print(sim_vm_flt[rr])
+                    samples_vm_flt = sparse.csr_matrix(samples_vm_flt)
+                    c, param = func(samples_vm_flt, alg[1])
+                    cl_vm[ alg2 ] = (c,param)
+                    #plot similarity matrix
+                    if traceName == '':
+                        #print(ii)
+                        #print(sim_vm_flt)
+                        show_sim_matrix(np.array(sim_vm_flt),filtered_vm_list_new,'VM_'+alg2, samples_vm_flt, cl_vm[ alg2 ], legend_vm)
+            else:
+                alg2 = alg[2]    
+                c, param = func(samples_vm,alg[1]) #execute clustering algorithm over samples with alg[1] as inparams
+                cl_vm[ alg2 ] = (c,param)  
+                #plot similarity matrix
+                if traceName == '':
+                    show_sim_matrix(sim_vm,filtered_vm_list,'VM_'+alg2, samples_vm, cl_vm[ alg2 ], legend_vm)
+#        if ('KMEANS_3' in cl_vm.keys()) and ('KMEANS_15' in cl_vm.keys()):
+#            print("Combination analysis KMEANS 3 and 15")
+#            show_sim_matrix_filter(sim_vm,filtered_vm_list,'VM_'+alg[2], samples_vm, cl_vm[ 'KMEANS_15' ], cl_vm[ 'KMEANS_3' ], legend_vm)
 
     #overall best VM and Proc clustering results
     if (traceName == '') and (len(filtered_vm_list) != 0) and (len(filtered_vmpid_list) != 0):         
