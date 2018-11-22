@@ -201,7 +201,7 @@ def show_sim_matrix_proc_vm(proc_vm_label, samples_vm, cl_vm, vm_list, samples_p
 
 #FIXME unable to graphically identify various traces when number is very large
 #TODO refactor: too much stuff is done here
-def show_sim_matrix(sim, vmpid_list, name, samples, cl, legend = None):
+def show_sim_matrix(sim, vmpid_list, name, samples, cl, legend = None, short_name = False, title = False, show = False):
     print("show_sim_matrix")
     arrsamples = samples.toarray()
     labels = cl[0]
@@ -212,17 +212,21 @@ def show_sim_matrix(sim, vmpid_list, name, samples, cl, legend = None):
     #sort samples with respect to labels
     order = np.argsort(labels).tolist() 
     #compute similarity matrix
-    d = reorder_sim(sim, order)        
-    vmpid_list = [vmpid_list[i]+'['+str(labels[i])+']' for i in order] #concatenate cluster labels to vmpid name
+    d = reorder_sim(sim, order)
+    if short_name:
+        vmpid_list = [vmpid_list[i].split(':')[0][0:-4]+'['+str(labels[i])+']' for i in order] #concatenate shorthanded cluster labels to vmpid name
+    else:
+        vmpid_list = [vmpid_list[i]+'['+str(labels[i])+']' for i in order] #concatenate cluster labels to vmpid name
     #plot it
     print("start plot...")
     fig, ax = plt.subplots()
     cax = ax.imshow(d, interpolation='nearest', cmap=cm.coolwarm)
-    ax.set_title(name+'\n'+'Similarity Matrix'+' (Silhouette = '+str(sil)+')')
+    if title:
+        ax.set_title(name+'\n'+'Similarity Matrix'+' (Silhouette = '+str(sil)+')')
     ax.set_yticks(np.arange(len(vmpid_list)))
     ax.set_xticks(np.arange(len(labels)))
-    ax.set_yticklabels(vmpid_list)
-    ax.set_xticklabels(sorted(labels))
+    ax.set_yticklabels(vmpid_list, fontdict = {'fontsize':8})
+    ax.set_xticklabels(sorted(labels), fontdict = {'fontsize':10})
     #axr = ax.twinx()
     #axr.set_yticks(np.arange(len(labels)))
     #axr.set_yticklabels(sorted(labels))
@@ -231,12 +235,13 @@ def show_sim_matrix(sim, vmpid_list, name, samples, cl, legend = None):
     #plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
 
     # Add colorbar, make sure to specify tick locations to match desired ticklabels
-    cbar = fig.colorbar(cax, ticks=[0, 0.25, 0.5, 0.75, 1])
-    cbar.ax.set_yticklabels(['< 0', '0.25', '0.5', '0.75', '> 1'])  # vertically oriented colorbar
+    #cbar = fig.colorbar(cax, ticks=[0, 0.25, 0.5, 0.75, 1])
+    #cbar.ax.set_yticklabels(['< 0', '0.25', '0.5', '0.75', '> 1'])  # vertically oriented colorbar
     #fig.tight_layout()  # otherwise the right y-label is slightly clipped
     #plt.ion() #turn on interactive mode so execution does not block on show()
     plt.savefig("/home/azhari/temp/"+name+".png", dpi=150, bbox_inches='tight')
-    ##plt.show()
+    if show:
+        plt.show()
     #also output centroids to text file -------------------------
     with open("/home/azhari/temp/"+name+".centroids",'w') as centF:
         if legend != None:
@@ -263,7 +268,8 @@ def show_sim_matrix(sim, vmpid_list, name, samples, cl, legend = None):
         #print(lft)
         p.append(tmp[0])
     plt.xlabel('Normalized Usage')
-    plt.title('VM Prototype Usage Patterns '+name)
+    if title:
+        plt.title('VM Prototype Usage Patterns '+name)
     plt.yticks(ind, ['C{}'.format(i) for i in range(centroids.shape[0])])
     plt.xticks(np.arange(0,3,0.5))
     if legend != None:
@@ -277,11 +283,12 @@ def show_sim_matrix(sim, vmpid_list, name, samples, cl, legend = None):
     ind = np.arange(centroids.shape[0])
     tmp = plt.bar(ind, c_sil, width = 0.35, align = 'center', color = colors[i])
     p.append(tmp[0])
-    plt.title('Cluster Silhouette '+name)
+    if title:
+        plt.title('Cluster Silhouette '+name)
     plt.xticks(ind, ['C{}'.format(i) for i in range(centroids.shape[0])])
-    #plt.xticks(np.arange(0,3,0.5))
-    if legend != None:
-        plt.legend(p, legend)    
+    plt.yticks(np.arange(0,1.1,0.1))
+    #if legend != None:
+    #    plt.legend(p, legend)    
     plt.savefig("/home/azhari/temp/"+name+"_sil.png", dpi=150, bbox_inches='tight')
     
     #------------- clusters standard error bar chart -------------------------------
@@ -291,11 +298,12 @@ def show_sim_matrix(sim, vmpid_list, name, samples, cl, legend = None):
     ind = np.arange(centroids.shape[0])
     tmp = plt.bar(ind, c_stderr, width = 0.35, align = 'center', color = colors[i])
     p.append(tmp[0])
-    plt.title('Cluster Standard Error '+name)
+    if title:
+        plt.title('Cluster Standard Error '+name)
     plt.xticks(ind, ['C{}'.format(i) for i in range(centroids.shape[0])])
-    #plt.xticks(np.arange(0,3,0.5))
-    if legend != None:
-        plt.legend(p, legend)    
+    plt.yticks(np.arange(0,1.1,0.1))
+    #if legend != None:
+    #    plt.legend(p, legend)    
     plt.savefig("/home/azhari/temp/"+name+"_stderr.png", dpi=150, bbox_inches='tight')
     
     #------------------ clusters membership text file --------------------------------            
@@ -1418,16 +1426,14 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_pr
                     cl_vm[ alg2 ] = (c,param)
                     #plot similarity matrix
                     if traceName == '':
-                        #print(ii)
-                        #print(sim_vm_flt)
-                        show_sim_matrix(np.array(sim_vm_flt),filtered_vm_list_new,'VM_'+alg2, samples_vm_flt, cl_vm[ alg2 ], legend_vm)
+                        show_sim_matrix(np.array(sim_vm_flt),filtered_vm_list_new,'VM_'+alg2, samples_vm_flt, cl_vm[ alg2 ], legend_vm, short_name = True)
             else:
                 alg2 = alg[2]    
                 c, param = func(samples_vm,alg[1]) #execute clustering algorithm over samples with alg[1] as inparams
                 cl_vm[ alg2 ] = (c,param)  
                 #plot similarity matrix
                 if traceName == '':
-                    show_sim_matrix(sim_vm,filtered_vm_list,'VM_'+alg2, samples_vm, cl_vm[ alg2 ], legend_vm)
+                    show_sim_matrix(sim_vm,filtered_vm_list,'VM_'+alg2, samples_vm, cl_vm[ alg2 ], legend_vm, short_name = True)
 #        if ('KMEANS_3' in cl_vm.keys()) and ('KMEANS_15' in cl_vm.keys()):
 #            print("Combination analysis KMEANS 3 and 15")
 #            show_sim_matrix_filter(sim_vm,filtered_vm_list,'VM_'+alg[2], samples_vm, cl_vm[ 'KMEANS_15' ], cl_vm[ 'KMEANS_3' ], legend_vm)
