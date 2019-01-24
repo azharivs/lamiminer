@@ -24,6 +24,7 @@ Once the above analysis is added to TraceCompass you should create a new tracing
 
 ## Command Line Options
 Example:
+
 ``` --top 3 --feature fti,fdi,fta,fne,wti,wdi,wta,wne --algs kmeans2,kmeans3,kmeans4,kmeans5,kmeans6,kmeans7,kmeans8 ```
 
 Consideres frequency of timer,disk,task,network and blocking times upon them and takes those VM/CR3 with top 3 values in any of these features and then computes kmeans clustering with number of clusters = 2,3,4,5,6,7,8
