@@ -15,13 +15,6 @@ In TraceCompass you need to add your python script as a new External Analysis. N
 
 For the particular case of vectorizing and clustering VM workload you simply need to enter ```/usr/local/bin/lttng-vectorizer-mi``` with no command arguments. Remember to give it some name as well to be listed under External Analysis. Then just right click on the new analysis and select Run External Analysis.
 
-**Note:** You have to change the static path to the ```folder_list.txt``` file provided in the Python script ```vectorizer.py``` to point to your specific location.
-
-```python
-with open('/home/azhari/FROM_UBUNTU/runtime-EclipseApplication/vm_analysis/.tracing/folder_list.txt') as listF:
-    folders = listF.readlines()
-```
-
 ## Analysis Dependencies
 The ```lttng-vectorizer``` analysis depends on the TraceCompass Incubator analysis ```VMblockVectorizerAnalysis``` which is maintained [here](https://github.com/Nemati/org.eclipse.tracecompass.incubator). You need to checkout the ```vahid``` branch to get the code.
 
@@ -31,26 +24,43 @@ Once the above analysis is added to TraceCompass you should create a new tracing
 
 ## Command Line Options
 Example:
-```--top 3 --feature fti,fta,fdi,fne --norm l2```
-Consideres frequency of timer,task,disk,network and takes those VM/CR3 with top 3 frequecies in any of these features and also computes a second order (l2) norm of the features before clustering.
+``` --top 3 --feature fti,fdi,fta,fne,wti,wdi,wta,wne --algs kmeans2,kmeans3,kmeans4,kmeans5,kmeans6,kmeans7,kmeans8 ```
+Consideres frequency of timer,disk,task,network and blocking times upon them and takes those VM/CR3 with top 3 values in any of these features and then computes kmeans clustering with number of clusters = 2,3,4,5,6,7,8
+``` --top 5 --feature fti,fdi,fta,fne --algs kmeans2,kmeans3,kmeans4,kmeans5,kmeans6,kmeans7,kmeans8 ```
+``` --top 5 --feature wti,wdi,wta,wne --algs kmeans2,kmeans3,kmeans4,kmeans5,kmeans6,kmeans7,kmeans8 ```
 
 ```python
+        ap.add_argument('-l','--list', type=str, default='',
+                        help='Absolute path and filename of folder_list.txt file containing paths to all folders containing .vector files.')
         ap.add_argument('-t','--top', type=int, default=0,
                         help='Limit samples to VMPID/CR3 among top n candidates for'
-                        ' at least one of the selcted features (default = 0: include all)')
-        ap.add_argument('-f','--feature', type=str, default='*',
-                        help='Only include these features given as comma separated list:'
-                        ' [f:frequency|w:wait time][ti:timer|ta:task|di:disk|ne:network|ot:other|no:non-root|ro:root|id:idle]'
+                        ' at least one of the selected features (default = 0: include all)')
+        ap.add_argument('-p','--proc', type=str, default='',
+                        help='Only include these features from the VM/Process data files given as comma separated list:'
+                        '[f:frequency|w:wait time][ti:timer|ta:task|di:disk|ne:network|ot:other|no:non-root|ro:root|l0:l0 preemption]'
                         'Example: fti,fta,fdi,fne only considers frequencies of timer,task,disk,network'
                         'Example: w*: include all average wait times'
                         '(default=*: include all)')
+        ap.add_argument('-v','--vcpu', type=str, default='',
+                        help='Only include these features from the VM/vCPU data files given as comma separated list:'
+                        '[f:frequency|w:wait time|p:preemption freq|e:exit freq]'
+                        'Used with f,w prefix, e.g., fti,wl0: [ti:timer|ta:task|di:disk|ne:network|ot:other|no:non-root|ro:root|l0:l0 preemption]'
+                        'Used with p prefix, e.g., pvm,pho: [vm:VM/VM|ho:VM/Host|pr:in VM process preemption freq.|th:in VM thread preemption freq.]'
+                        'Used with e prefix, e.g., eN1.N2,... a dot separated list of exit codes follow'
+                        'Example: fti,fta,fdi,fne only considers frequencies of timer,task,disk,network'
+                        'Example: w*: include all average wait times'
+                        'Example: p*: include all types of VM preemptions'
+                        'Example: e*: include all exit codes'
+                        '(default='': none of the vcpu features)')
         ap.add_argument('-n','--norm', type=str, default='l2',
                         help='Normalizing method for feature vector: l1|l2 (default =l2)')
-        ap.add_argument('-c','--algs', type=str, default='*',
-                        help='Only include these features given as comma separated list:'
-                        ' kmeans3,dbscan,aggmax,aggmin,aggavg (agg:agglomerative)'
-                        ' When relevant, the number at the end indicates the number of clusters'
+        ap.add_argument('--rate', default=False, action='store_true',
+                        help='Scale frequency feature w.r.t. total execution time (root+non-root) to obtain waiting rate (default =False)')
+        ap.add_argument('-c','--algs', type=str, default='kmeans3',
+                        help='Only include these clustering algorithms given as comma separated list:'
+                        'kmeans3,dbscan,aggmax,aggmin,aggavg (agg:agglomerative)'
+                        'When relevant, the number at the end indicates the number of clusters'
                         'Example: kmeans3,dbscan '
-                        '   Run kmeans with 3 clusters and dbscan'
+                        '    Run kmeans with 3 clusters and run dbscan'
                         '(default=kmeans3)')
 ```
