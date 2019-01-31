@@ -25,6 +25,9 @@ Once the above analysis is added to TraceCompass you should create a new tracing
 ## Command Line Options
 Example:
 
+```/usr/local/bin/lttng-vectorizer-mi /home/azhari/lttng-traces/auto-20180522-195740/kernel --list /home/azhari/Downloads/data_5/folder_list.txt --rate --vcpu xe,fti,fta,fdi,fne --algs kmeans5
+
+
 ``` --top 3 --feature fti,fdi,fta,fne,wti,wdi,wta,wne --algs kmeans2,kmeans3,kmeans4,kmeans5,kmeans6,kmeans7,kmeans8 ```
 
 Consideres frequency of timer,disk,task,network and blocking times upon them and takes those VM/CR3 with top 3 values in any of these features and then computes kmeans clustering with number of clusters = 2,3,4,5,6,7,8
@@ -42,14 +45,16 @@ Consideres frequency of timer,disk,task,network and blocking times upon them and
         ap.add_argument('-p','--proc', type=str, default='',
                         help='Only include these features from the VM/Process data files given as comma separated list:'
                         '[f:frequency|w:wait time][ti:timer|ta:task|di:disk|ne:network|ot:other|no:non-root|ro:root|l0:l0 preemption]'
+                        'Used with pi prefix, e.g., piti,pine: [inject timer freq.:piti|inj task: pita|inj disk: pidi|inj net: pine]'
                         'Example: fti,fta,fdi,fne only considers frequencies of timer,task,disk,network'
                         'Example: w*: include all average wait times'
                         '(default=*: include all)')
         ap.add_argument('-v','--vcpu', type=str, default='',
                         help='Only include these features from the VM/vCPU data files given as comma separated list:'
-                        '[f:frequency|w:wait time|p:preemption freq|e:exit freq]'
+                        '[f:frequency|w:wait time|p:preemption freq|e:exit freq|xe:vcpu execution time (no other following)]'
                         'Used with f,w prefix, e.g., fti,wl0: [ti:timer|ta:task|di:disk|ne:network|ot:other|no:non-root|ro:root|l0:l0 preemption]'
                         'Used with p prefix, e.g., pvm,pho: [vm:VM/VM|ho:VM/Host|pr:in VM process preemption freq.|th:in VM thread preemption freq.]'
+                        'Used with pi prefix, e.g., piti,pine: [inject timer freq.:piti|inj task: pita|inj disk: pidi|inj net: pine]'
                         'Used with e prefix, e.g., eN1.N2,... a dot separated list of exit codes follow'
                         'Example: fti,fta,fdi,fne only considers frequencies of timer,task,disk,network'
                         'Example: w*: include all average wait times'
