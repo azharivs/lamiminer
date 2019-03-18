@@ -858,40 +858,31 @@ def get_random_data(n_samples, n_features, alg_list, args):
 #traceName is in this format: 'traceFileName:timestamp'
 def vectorize_proc(avgF,freqF,traceName,d,avgvec,fvec):
     #print('vectorize_proc_begin:',traceName)
-    avglines = avgF.readlines()
+    #avglines = avgF.readlines()
     freqlines = freqF.readlines()
-    avglines = [a.replace('\n','') for a in avglines]
+    #avglines = [a.replace('\n','') for a in avglines]
     freqlines = [a.replace('\n','') for a in freqlines]
     #create a dictionary with key = 'traceFileName:timestamp/VMID/CR3' and values the wait times and frequencies all in one list
-    tmpd={traceName+'/'+avglines[i].split(',')[0] : \
-        avglines[i].split(',')[1:] + freqlines[i].split(',')[1:] for i in range(0,len(freqlines))}
+    tmpd={traceName+'/'+freqlines[i].split(',')[0] : \
+        freqlines[i].split(',')[1:] for i in range(0,len(freqlines))}
     d.update(tmpd)
     
     #TODO I am making no use of the dict values, just the keys --> change into a list
     #TODO consider possibility of dict to index various fields, e.g., f['timer']=int(tmpd[vmpid][8])          
     for vmpid in tmpd.keys():
-        f = np.zeros(8)
-        avg = np.zeros(8)
-        avg[0] = int(tmpd[vmpid][0]) #timer avg
-        avg[1] = int(tmpd[vmpid][1]) 
-        avg[2] = int(tmpd[vmpid][2]) 
-        avg[3] = int(tmpd[vmpid][3]) 
-        avg[4] = int(tmpd[vmpid][4]) 
-        avg[5] = int(tmpd[vmpid][5]) 
-        avg[6] = int(tmpd[vmpid][6]) 
-        avg[7] = int(tmpd[vmpid][7]) #L0 preemption avg 
-        f[0] = int(tmpd[vmpid][8]) #timer freq
-        f[1] = int(tmpd[vmpid][9])
-        f[2] = int(tmpd[vmpid][10])
-        f[3] = int(tmpd[vmpid][11])
-        f[4] = int(tmpd[vmpid][12])
-        f[5] = int(tmpd[vmpid][13])
-        f[6] = int(tmpd[vmpid][14])
-        f[7] = int(tmpd[vmpid][15]) #L0 preemption freq
-        avgvec[vmpid] = avg
+        f = np.zeros(9)
+        f[0] = int(tmpd[vmpid][0]) #timer freq
+        f[1] = int(tmpd[vmpid][1])
+        f[2] = int(tmpd[vmpid][2])
+        f[3] = int(tmpd[vmpid][3])
+        f[4] = int(tmpd[vmpid][4])
+        f[5] = int(tmpd[vmpid][5])
+        f[6] = int(tmpd[vmpid][6])
+        f[7] = int(tmpd[vmpid][7]) #L0 preemption freq
+        f[8] = int(tmpd[vmpid][8]) #L0 preemption freq
         fvec[vmpid] = f
     #print('vectorize_proc_end:',traceName)          
-    return d, avgvec, fvec  
+    return d, fvec  
 
 
 #traceName is in this format: 'traceFileName:timestamp'
@@ -1130,35 +1121,35 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_pr
     print("get_clusters_begin",traceName)
     if traceName == '': #aggregate of all traces
         vmpid_list = d_proc.keys() #needs to be overwritten after collapse_vm_samples
-        vmvcpu_list = d_vcpu.keys() #needs to be overwritten after collapse_vm_samples
+        #vmvcpu_list = d_vcpu.keys() #needs to be overwritten after collapse_vm_samples
     else:#filter out this traceName and take related VM/CR3 values and put in list
         vmpid_list = [s for s in d_proc.keys() if s.split('/')[0] == traceName] #needs to be overwritten after collapse_vm_samples
-        vmvcpu_list = [s for s in d_vcpu.keys() if s.split('/')[0] == traceName] #needs to be overwritten after collapse_vm_samples
+        #vmvcpu_list = [s for s in d_vcpu.keys() if s.split('/')[0] == traceName] #needs to be overwritten after collapse_vm_samples
     
     #build sample matrix out of feature vectors begin >>>>>>>>>>>>>>>>>>>>>>>>>
     #preprocess feature vectors (filtering)
     #determine which features to consider (Freq|Wait)
     #(TIMER,DISK,NET,TASK,OTHER,NON_ROOT,ROOT,IDLE,L0_PREEMPTION)
     f_proc_index = [] #will eventually contain index number for feature to be included in analysis
-    w_proc_index = []
-    exec_proc_index = []
-    pr_proc_index = [] #will eventually contain index number for feature to be included in analysis
-    ex_proc_index = [] #will eventually contain index number for feature to be included in analysis
+    #w_proc_index = []
+    #exec_proc_index = []
+    #pr_proc_index = [] #will eventually contain index number for feature to be included in analysis
+    #ex_proc_index = [] #will eventually contain index number for feature to be included in analysis
 
-    f_vcpu_index = [] #will eventually contain index number for feature to be included in analysis
-    w_vcpu_index = []
-    exec_vcpu_index = []
-    pr_vcpu_index = [] #will eventually contain index number for feature to be included in analysis
-    ex_vcpu_index = [] #will eventually contain index number for feature to be included in analysis
+    #f_vcpu_index = [] #will eventually contain index number for feature to be included in analysis
+    #w_vcpu_index = []
+    #exec_vcpu_index = []
+    #pr_vcpu_index = [] #will eventually contain index number for feature to be included in analysis
+    #ex_vcpu_index = [] #will eventually contain index number for feature to be included in analysis
     
 
     #dict of command line arguments and the corresponding feature index to take
     #(w)ait and (f)requency vector: (ti)mer/(ta)sk/...  
     index = {'fti':0,'wti':0,'fdi':1,'wdi':1,'fne':2,'wne':2,'fta':3,'wta':3,'fot':4,'wot':4,'fno':5,'wno':5,'fro':6,'wro':6,'fl0':7,'wl0':7}
     #preemption vector: VM/VM, VM/Host, In VM Process, In VM Thread, (i)nject (ti)mer/(ta)sk/(di)sk/(ne)twork
-    prindex = {'pvm':0,'pho':1,'ppr':2,'pth':3, 'piti':4, 'pita':5, 'pidi':6, 'pine':7}
+    #prindex = {'pvm':0,'pho':1,'ppr':2,'pth':3, 'piti':4, 'pita':5, 'pidi':6, 'pine':7}
     fw_names = {0:'timer',1:'disk',2:'net',3:'task',4:'other',5:'non-root',6:'root',7:'l0'} 
-    pr_names = {0:'vm',1:'host',2:'proc',3:'thread',4:'timer',5:'task',6:'disk',7:'net'} 
+    #pr_names = {0:'vm',1:'host',2:'proc',3:'thread',4:'timer',5:'task',6:'disk',7:'net'} 
 
     #--proc: process based feature selection
     for feature in args.proc.split(','): 
@@ -1166,118 +1157,68 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_pr
             pass
         elif feature[0] == '*':
             f_proc_index = list(range(max(index.values())+1)) #max number of features obtained from index dict
-            w_proc_index = list(range(max(index.values())+1))
-            exec_proc_index = [0] 
-            pr_proc_index = list(range(max(prindex.values())+1))
-            ex_proc_index = list(range(65))
+            #w_proc_index = list(range(max(index.values())+1))
+            #exec_proc_index = [0] 
+            #pr_proc_index = list(range(max(prindex.values())+1))
+            #ex_proc_index = list(range(65))
         
         elif feature[1] == '*':      
             if feature[0] == 'f':
                 f_proc_index = list(range(max(index.values())+1))
-            if feature[0] == 'w':
-                w_proc_index[:] = list(range(max(index.values())+1))
-            if feature[0] == 'p':
-                pr_proc_index[:] = list(range(max(prindex.values())+1))
-            if feature[0] == 'e':
-                ex_proc_index[:] = list(range(65))
+            #if feature[0] == 'w':
+            #    w_proc_index[:] = list(range(max(index.values())+1))
+            #if feature[0] == 'p':
+            #    pr_proc_index[:] = list(range(max(prindex.values())+1))
+            #if feature[0] == 'e':
+            #    ex_proc_index[:] = list(range(65))
         else:
             if feature[0] == 'f':
                 f_proc_index.append(index[feature])
-            if feature[0] == 'w':
-                w_proc_index.append(index[feature])
-            if feature[0] == 'xe': #execution time (just xe)
-                exec_proc_index = [0]
-            if feature[0] == 'p':
-                pr_proc_index.append(prindex[feature])
-            if feature[0] == 'e':
-                for ex_reason in feature[1:].split('.'):
-                    ex_proc_index.append(int(ex_reason))
+            #if feature[0] == 'w':
+            #    w_proc_index.append(index[feature])
+            #if feature[0] == 'xe': #execution time (just xe)
+            #    exec_proc_index = [0]
+            #if feature[0] == 'p':
+            #    pr_proc_index.append(prindex[feature])
+            #if feature[0] == 'e':
+            #    for ex_reason in feature[1:].split('.'):
+            #        ex_proc_index.append(int(ex_reason))
     
-    print("--vcpu: vcpu base feature selection")
-    #--vcpu: vcpu base feature selection consisting only of timer/net/disk/task/other/root/non-root/l0 waits
-    #TODO refactor into a function 
-    for feature in args.vcpu.split(','): 
-        if feature == '':
-            pass
-        elif feature[0] == '*':
-            f_vcpu_index = list(range(max(index.values())+1)) #max number of features obtained from index dict
-            w_vcpu_index = list(range(max(index.values())+1))
-            exec_vcpu_index = [0]
-            pr_vcpu_index = list(range(max(prindex.values())+1))
-            ex_vcpu_index = list(range(65))
-        
-        elif feature[1] == '*':      
-            if feature[0] == 'f':
-                f_vcpu_index = list(range(max(index.values())+1))
-            if feature[0] == 'w':
-                w_vcpu_index[:] = list(range(max(index.values())+1))
-            if feature[0] == 'p':
-                pr_vcpu_index[:] = list(range(max(prindex.values())+1))
-            if feature[0] == 'e':
-                ex_vcpu_index[:] = list(range(65))
-        else:
-            if feature[0] == 'f':
-                f_vcpu_index.append(index[feature])
-            if feature[0] == 'w':
-                w_vcpu_index.append(index[feature])
-            if feature == 'xe': #execution time (j xe)
-                exec_vcpu_index = [0]
-            if feature[0] == 'p':
-                pr_vcpu_index.append(prindex[feature])
-            if feature[0] == 'e':
-                for ex_reason in feature[1:].split('.'):
-                    ex_vcpu_index.append(int(ex_reason))
                     
                     
     print("Selected indices:")
-    print("Proc:",f_proc_index, w_proc_index, pr_proc_index, ex_proc_index, exec_proc_index)
-    print("vCPU:",f_vcpu_index, w_vcpu_index, pr_vcpu_index, ex_vcpu_index, exec_vcpu_index)
+    print("Proc:",f_proc_index)#, w_proc_index, pr_proc_index, ex_proc_index, exec_proc_index)
+    #print("vCPU:",f_vcpu_index, w_vcpu_index, pr_vcpu_index, ex_vcpu_index, exec_vcpu_index)
 
     rvec_proc = {}
     execvec_proc = {} #dict holding total execution time per VM/process in nsec
-    rvec_pr_proc = {}
-    rvec_ex_proc = {}
-    rvec_exec_proc = {}
+    #rvec_pr_proc = {}
+    #rvec_ex_proc = {}
+    #rvec_exec_proc = {}
 
-    rvec_vcpu = {}
-    execvec_vcpu = {} #dict holding total execution time per VM/vCPU in nsec
-    rvec_pr_vcpu = {}
-    rvec_ex_vcpu = {}
-    rvec_exec_vcpu = {}
+    #rvec_vcpu = {}
+    #execvec_vcpu = {} #dict holding total execution time per VM/vCPU in nsec
+    #rvec_pr_vcpu = {}
+    #rvec_ex_vcpu = {}
+    #rvec_exec_vcpu = {}
     #TODO refactor into one function call per proc and vcpu
     for vmpid in vmpid_list:
-        exec_time = (avgvec_proc[vmpid][5]*fvec_proc[vmpid][5]+avgvec_proc[vmpid][6]*fvec_proc[vmpid][6])
+        exec_time = fvec_proc[vmpid][8]
         execvec_proc[vmpid] = exec_time
-        rvec_exec_proc[vmpid] = execvec_proc[vmpid] / tracet_proc[vmpid] #execution time as fraction of trace time
+        #rvec_exec_proc[vmpid] = execvec_proc[vmpid] / tracet_proc[vmpid] #execution time as fraction of trace time
         if exec_time == 0:
             print('WARNING: Zero execution time in: ', vmpid)
             if fvec_proc[vmpid][0:7].any():
                 print('WARNING: Bad frequency vector in: ', vmpid)
             else:
                 rvec_proc[vmpid] = fvec_proc[vmpid] 
-                rvec_pr_proc[vmpid] = prvec_proc[vmpid]
-                rvec_ex_proc[vmpid] = exvec_proc[vmpid] 
+                #rvec_pr_proc[vmpid] = prvec_proc[vmpid]
+                #rvec_ex_proc[vmpid] = exvec_proc[vmpid] 
         else:
             rvec_proc[vmpid] = 1000000000 * (fvec_proc[vmpid] / exec_time) #per nanosec to per sec
-            rvec_pr_proc[vmpid] = 1000000000 * (prvec_proc[vmpid] / exec_time) #per nanosec to per sec
-            rvec_ex_proc[vmpid] = 1000000000 * (exvec_proc[vmpid] / exec_time) #per nanosec to per sec
+            #rvec_pr_proc[vmpid] = 1000000000 * (prvec_proc[vmpid] / exec_time) #per nanosec to per sec
+            #rvec_ex_proc[vmpid] = 1000000000 * (exvec_proc[vmpid] / exec_time) #per nanosec to per sec
      
-    for vmvcpu in vmvcpu_list:
-        exec_time = (avgvec_vcpu[vmvcpu][5]*fvec_vcpu[vmvcpu][5]+avgvec_vcpu[vmvcpu][6]*fvec_vcpu[vmvcpu][6])
-        execvec_vcpu[vmvcpu] = exec_time
-        rvec_exec_vcpu[vmvcpu] = execvec_vcpu[vmvcpu] / tracet_vcpu[vmvcpu] #execution time as fraction of trace time
-        if exec_time == 0:
-            print(vmvcpu, 'INFO: Zero execution time !!!')
-            if fvec_vcpu[vmvcpu][0:7].any():
-                print(vmvcpu,'WARNING: Bad frequency vector !!!')
-            else:
-                rvec_vcpu[vmvcpu] = fvec_vcpu[vmvcpu]
-                rvec_pr_vcpu[vmvcpu] = prvec_vcpu[vmvcpu]
-                rvec_ex_vcpu[vmvcpu] = exvec_vcpu[vmvcpu] 
-        else:
-            rvec_vcpu[vmvcpu] = 1000000000 * (fvec_vcpu[vmvcpu] / exec_time) #per nanosec to per sec
-            rvec_pr_vcpu[vmvcpu] = 1000000000 * (prvec_vcpu[vmvcpu] / exec_time) #per nanosec to per sec
-            rvec_ex_vcpu[vmvcpu] = 1000000000 * (exvec_vcpu[vmvcpu] / exec_time) #per nanosec to per sec
 
     #if --rate is provided then obtain waiting rate instead of waiting frequency
     #waiting frequency is absolute total number of times the entity has waited during trace period    
@@ -1288,93 +1229,41 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_pr
     if args.rate == False:
         for vmpid in vmpid_list:
             rvec_proc[vmpid] = fvec_proc[vmpid]
-            rvec_pr_proc[vmpid] = prvec_proc[vmpid]
-            rvec_ex_proc[vmpid] = exvec_proc[vmpid]
-            rvec_exec_proc[vmpid] = execvec_proc[vmpid]
-        for vmvcpu in vmvcpu_list:
-            rvec_vcpu[vmvcpu] = fvec_vcpu[vmvcpu]
-            rvec_pr_vcpu[vmvcpu] = prvec_vcpu[vmvcpu]
-            rvec_ex_vcpu[vmvcpu] = exvec_vcpu[vmvcpu]
-            rvec_exec_vcpu[vmvcpu] = execvec_vcpu[vmvcpu]
+            #rvec_pr_proc[vmpid] = prvec_proc[vmpid]
+            #rvec_ex_proc[vmpid] = exvec_proc[vmpid]
+            #rvec_exec_proc[vmpid] = execvec_proc[vmpid]
 
     
     filtered_vmpid_list, fl_out = filter_samples(args.top, f_proc_index, list(vmpid_list), rvec_proc, max(index.values())+1 )
-    fl, fl_out = filter_samples(args.top, w_proc_index, fl_out, avgvec_proc, max(index.values())+1 )
-    filtered_vmpid_list = filtered_vmpid_list + fl
-    fl, fl_out = filter_samples(args.top, pr_proc_index, fl_out, rvec_pr_proc, max(prindex.values())+1 )
-    filtered_vmpid_list = filtered_vmpid_list + fl
-    #print(filtered_vmpid_list, fl_out)
-    fl, fl_out = filter_samples(args.top, ex_proc_index, fl_out, rvec_ex_proc, 65)
-    filtered_vmpid_list = filtered_vmpid_list + fl
-    fl, fl_out = filter_samples(args.top, exec_proc_index, fl_out, rvec_exec_proc, 1)
-    filtered_vmpid_list = filtered_vmpid_list + fl
-    #print(filtered_vmpid_list, fl_out)
-    #print("*********")
-    (f_proc_samples, w_proc_samples, pr_proc_samples, ex_proc_samples, exec_proc_samples) = \
+    #fl, fl_out = filter_samples(args.top, w_proc_index, fl_out, avgvec_proc, max(index.values())+1 )
+    #filtered_vmpid_list = filtered_vmpid_list + fl
+    #fl, fl_out = filter_samples(args.top, pr_proc_index, fl_out, rvec_pr_proc, max(prindex.values())+1 )
+    #filtered_vmpid_list = filtered_vmpid_list + fl
+    ##print(filtered_vmpid_list, fl_out)
+    #fl, fl_out = filter_samples(args.top, ex_proc_index, fl_out, rvec_ex_proc, 65)
+    #filtered_vmpid_list = filtered_vmpid_list + fl
+    #fl, fl_out = filter_samples(args.top, exec_proc_index, fl_out, rvec_exec_proc, 1)
+    #filtered_vmpid_list = filtered_vmpid_list + fl
+    ##print(filtered_vmpid_list, fl_out)
+    ##print("*********")
+    (f_proc_samples) = \
         create_vectors(\
             filtered_vmpid_list, \
-            (rvec_proc, avgvec_proc, rvec_pr_proc, rvec_ex_proc, rvec_exec_proc), \
-            (f_proc_index, w_proc_index, pr_proc_index, ex_proc_index, exec_proc_index), \
+            (rvec_proc), \
             args.norm \
             )
     
-    #filtered_vmvcpu_list = []
-    filtered_vm_list = []
-    if traceName == '': #only makes sense for aggregate trace clustering
-        rvec_vm = collapse_vm_samples(rvec_vcpu) #TODO: there are two ways to collapse: simple sum or reaverage considering exec times
-        avgvec_vm = collapse_vm_samples(avgvec_vcpu, fvec_vcpu)
-        rvec_prvm = collapse_vm_samples(rvec_pr_vcpu)
-        #print(rvec_prvm.keys())
-        rvec_exvm = collapse_vm_samples(rvec_ex_vcpu)
-        rvec_exec_vm = collapse_vm_samples(rvec_exec_vcpu) #total execution time over all vCPUs
-        vm_list = rvec_vm.keys()
-        
-        #print("*********")
-        #print(list(vm_list))
-        #print(rvec_vm)
-        filtered_vm_list, fl_out = filter_samples(0, f_vcpu_index, list(vm_list), rvec_vm, max(index.values())+1 )
-        legend_vm = [fw_names[ii] for ii in f_vcpu_index]
-        #print(filtered_vm_list, fl_out)
-        fl, fl_out = filter_samples(0, w_vcpu_index, fl_out, avgvec_vm, max(index.values())+1 )
-        legend_vm = legend_vm + [fw_names[ii] for ii in w_vcpu_index]
-        filtered_vm_list = filtered_vm_list + fl
-        #print(filtered_vm_list, fl_out)
-        fl, fl_out = filter_samples(0, pr_vcpu_index, fl_out, rvec_prvm, max(prindex.values())+1 )
-        legend_vm = legend_vm + [pr_names[ii] for ii in pr_vcpu_index]
-        filtered_vm_list = filtered_vm_list + fl
-        #print(filtered_vm_list, fl_out)
-        fl, fl_out = filter_samples(0, ex_vcpu_index, fl_out, rvec_exvm, 65)
-        legend_vm = legend_vm + ['exit_{}'.format(ii) for ii in ex_vcpu_index]
-        filtered_vm_list = filtered_vm_list + fl
-        fl, fl_out = filter_samples(0, exec_vcpu_index, fl_out, rvec_exec_vm, 1)
-        legend_vm = legend_vm + ['cpu' for ii in exec_vcpu_index]
-        filtered_vm_list = filtered_vm_list + fl
-        #print(filtered_vm_list, fl_out)
-        #print("*********")
-
-        (f_vm_samples, w_vm_samples, pr_vm_samples, ex_vm_samples, exec_vm_samples) = \
-                create_vectors(\
-                filtered_vm_list, \
-                (rvec_vm, avgvec_vm, rvec_prvm, rvec_exvm, rvec_exec_vm), \
-                (f_vcpu_index, w_vcpu_index, pr_vcpu_index, ex_vcpu_index, exec_vcpu_index), \
-                args.norm \
-                )
         print("*********")
     
-    if len(filtered_vmpid_list) == 0 and len(filtered_vm_list) == 0: #no samples made it through
+    if len(filtered_vmpid_list) == 0: #no samples made it through
         return None, None, None, None
     
     if len(filtered_vmpid_list) != 0:
-        samples_proc = create_sample_matrix( (f_proc_samples, w_proc_samples, pr_proc_samples, ex_proc_samples, exec_proc_samples), args.norm )
+        samples_proc = create_sample_matrix( (f_proc_samples), args.norm )
         #now compute similarity matrix among samples
         #TODO run on a separate thread and join
         sim_proc = euclidean_sim(samples_proc)
 
-    if len(filtered_vm_list) != 0:       
-        samples_vm = create_sample_matrix( (f_vm_samples, w_vm_samples, pr_vm_samples, ex_vm_samples, exec_vm_samples), args.norm )
-        #now compute similarity matrix among samples
-        #TODO run on a separate thread and join
-        sim_vm = euclidean_sim(samples_vm)
     #build sample matrix out of feature vectors end <<<<<<<<<<<<<<<<<<<<<<<<<<<
     
     
