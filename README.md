@@ -73,3 +73,18 @@ Consideres frequency of timer,disk,task,network and blocking times upon them and
                         '    Run kmeans with 3 clusters and run dbscan'
                         '(default=kmeans3)')
 ```
+============= A few notes to be considered until I get the time to polish the code ================
+1. Make sure you checkout the branch "newformat" for our recent features and the two stage approach.
+
+2. As for now we need a dummy trace file to provide as input for vectorizer because it relies on lttng-analysis backend. Don't ask just do it! like:
+
+/usr/local/bin/lttng-vectorizer-mi /home/azhari/lttng-traces/auto-20180522-195740/kernel --list /home/azhari/Downloads/data_5/folder_list.txt --rate --vcpu xe,fti,fta,fdi,fne --algs kmeans5
+
+3. folder_list.txt should NOT contain full paths just the folder names and MUST be copied in the top folder where all other folders for .vector files are located.
+
+4. --vcpu refers to VM features and xe is CPU execution time for that particular VM over all its VCPUs (I think!).
+
+5. The two stage approach is hardcoded within the code (line 1401). It works by running a kmeans3 and then doing the listed --algs for each of the obtained three clusters.
+
+6. The output is written to /home/azhari/temp/ so please change that yourself.
+
