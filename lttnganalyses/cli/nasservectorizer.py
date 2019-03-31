@@ -87,12 +87,14 @@ def cosine_sim(samples):
     
 #compute euclidean similarity matrix and return in numpy array   
 def euclidean_sim(samples):
-    print("euclidean_sim_begin")
+    print("euclidean_sim_begin:",samples.shape[0])
     n_samples = samples.shape[0]
     d = np.zeros((n_samples,n_samples))
+    return d #sva added to speed things up
     d_min = 0
     d_max = 0
     for i in range(n_samples):
+        print("processing row ",i)
         for j in range(i,n_samples):
             d[i][j] = (sqdist(samples.toarray()[i],samples.toarray()[j]))**(1/2)
             d[j][i] = d[i][j]
@@ -100,7 +102,8 @@ def euclidean_sim(samples):
                 d_min = d[i][j]
             if d[i][j] > d_max:
                 d_max = d[i][j]
-            
+    
+    print("normalizing distances")        
     for i in range(n_samples):
         for j in range(n_samples):
             d[i][j] = 1-(d[i][j]-d_min)/(d_max-d_min)
@@ -112,6 +115,7 @@ def reorder_sim(sim, order):
     print("reorder_sim_begin (with indexes sorted according to order)")
     n_samples = sim.shape[0]
     d = np.zeros((n_samples,n_samples))
+    return d #sva added to speedup
     d_min = 0
     d_max = 0
     for i in range(n_samples):
@@ -192,7 +196,7 @@ def show_sim_matrix_proc_vm(proc_vm_label, samples_vm, cl_vm, vm_list, samples_p
     cbar.ax.set_yticklabels(['< 0', '0.25', '0.5', '0.75', '> 1'])  # vertically oriented colorbar
     #fig.tight_layout()  # otherwise the right y-label is slightly clipped
     #plt.ion() #turn on interactive mode so execution does not block on show()
-    plt.savefig("/home/azhari/temp/"+name+".png", dpi=150, bbox_inches='tight')
+    plt.savefig("/home/azhari/temp2/"+name+".png", dpi=150, bbox_inches='tight')
     plt.show()
     #from io import BytesIO
     
@@ -209,9 +213,9 @@ def show_sim_matrix(sim, vmpid_list, name, samples, cl, legend = None, short_nam
     sil = cl[1]['total silhouette']
     c_sil = cl[1]['cluster silhouette']
     c_stderr = cl[1]['cluster stderr']
-    #sort samples with respect to labels
+    print("#sort samples with respect to labels ...")
     order = np.argsort(labels).tolist() 
-    #compute similarity matrix
+    print("#compute similarity matrix ...")
     d = reorder_sim(sim, order)
     if short_name:
         vmpid_list = [vmpid_list[i].split(':')[0][0:-4]+'['+str(labels[i])+']' for i in order] #concatenate shorthanded cluster labels to vmpid name
@@ -221,12 +225,12 @@ def show_sim_matrix(sim, vmpid_list, name, samples, cl, legend = None, short_nam
     print("start plot...")
     fig, ax = plt.subplots()
     cax = ax.imshow(d, interpolation='nearest', cmap=cm.coolwarm)
-    if title:
-        ax.set_title(name+'\n'+'Similarity Matrix'+' (Silhouette = '+str(sil)+')')
-    ax.set_yticks(np.arange(len(vmpid_list)))
-    ax.set_xticks(np.arange(len(labels)))
-    ax.set_yticklabels(vmpid_list, fontdict = {'fontsize':8})
-    ax.set_xticklabels(sorted(labels), fontdict = {'fontsize':10})
+#    if title:
+#        ax.set_title(name+'\n'+'Similarity Matrix'+' (Silhouette = '+str(sil)+')')
+#    ax.set_yticks(np.arange(len(vmpid_list)))
+#    ax.set_xticks(np.arange(len(labels)))
+#    ax.set_yticklabels(vmpid_list, fontdict = {'fontsize':8})
+#    ax.set_xticklabels(sorted(labels), fontdict = {'fontsize':10})
     #axr = ax.twinx()
     #axr.set_yticks(np.arange(len(labels)))
     #axr.set_yticklabels(sorted(labels))
@@ -239,11 +243,11 @@ def show_sim_matrix(sim, vmpid_list, name, samples, cl, legend = None, short_nam
     #cbar.ax.set_yticklabels(['< 0', '0.25', '0.5', '0.75', '> 1'])  # vertically oriented colorbar
     #fig.tight_layout()  # otherwise the right y-label is slightly clipped
     #plt.ion() #turn on interactive mode so execution does not block on show()
-    plt.savefig("/home/azhari/temp2/"+name+".png", dpi=150, bbox_inches='tight')
-    if show:
-        plt.show()
+#    plt.savefig("/home/azhari/temp2/"+name+".png", dpi=150, bbox_inches='tight')
+#    if show:
+#        plt.show()
     #also output centroids to text file -------------------------
-    with open("/home/azhari/temp/"+name+".centroids",'w') as centF:
+    with open("/home/azhari/temp2/"+name+".centroids",'w') as centF:
         if legend != None:
             line = '          \t'
             for l in legend:
@@ -274,7 +278,7 @@ def show_sim_matrix(sim, vmpid_list, name, samples, cl, legend = None, short_nam
     plt.xticks(np.arange(0,3,0.5))
     if legend != None:
         plt.legend(p, legend)    
-    plt.savefig("/home/azhari/temp/"+name+"_centroids.png", dpi=150, bbox_inches='tight')
+    plt.savefig("/home/azhari/temp2/"+name+"_centroids.png", dpi=150, bbox_inches='tight')
     
     #------------- clusters silhouette bar chart -------------------------------
     print("------------- clusters silhouette bar chart -------------------------------")
@@ -289,7 +293,7 @@ def show_sim_matrix(sim, vmpid_list, name, samples, cl, legend = None, short_nam
     plt.yticks(np.arange(0,1.1,0.1))
     #if legend != None:
     #    plt.legend(p, legend)    
-    plt.savefig("/home/azhari/temp/"+name+"_sil.png", dpi=150, bbox_inches='tight')
+    plt.savefig("/home/azhari/temp2/"+name+"_sil.png", dpi=150, bbox_inches='tight')
     
     #------------- clusters standard error bar chart -------------------------------
     print("------------- clusters standard error bar chart -------------------------------")
@@ -304,10 +308,10 @@ def show_sim_matrix(sim, vmpid_list, name, samples, cl, legend = None, short_nam
     plt.yticks(np.arange(0,1.1,0.1))
     #if legend != None:
     #    plt.legend(p, legend)    
-    plt.savefig("/home/azhari/temp/"+name+"_stderr.png", dpi=150, bbox_inches='tight')
+    plt.savefig("/home/azhari/temp2/"+name+"_stderr.png", dpi=150, bbox_inches='tight')
     
     #------------------ clusters membership text file --------------------------------            
-    with open("/home/azhari/temp/"+name+".clusters",'w') as clF:
+    with open("/home/azhari/temp2/"+name+".clusters",'w') as clF:
         if legend != None:
             line = ''
             for l in legend:
@@ -365,10 +369,10 @@ def show_sim_matrix_filter(sim, vmpid_list_orig, name, samples, cl, cl_filter, l
         cbar.ax.set_yticklabels(['< 0', '0.25', '0.5', '0.75', '> 1'])  # vertically oriented colorbar
         #fig.tight_layout()  # otherwise the right y-label is slightly clipped
         #plt.ion() #turn on interactive mode so execution does not block on show()
-        plt.savefig("/home/azhari/temp/"+name+"_filter_C{}.png".format(c_filter), dpi=150, bbox_inches='tight')
+        plt.savefig("/home/azhari/temp2/"+name+"_filter_C{}.png".format(c_filter), dpi=150, bbox_inches='tight')
         ##plt.show()
         #also output centroids to text file -------------------------
-        with open("/home/azhari/temp/"+name+"_filter_C{}.centroids".format(c_filter),'w') as centF:
+        with open("/home/azhari/temp2/"+name+"_filter_C{}.centroids".format(c_filter),'w') as centF:
             if legend != None:
                 line = '          \t'
                 for l in legend:
@@ -398,7 +402,7 @@ def show_sim_matrix_filter(sim, vmpid_list_orig, name, samples, cl, cl_filter, l
         plt.xticks(np.arange(0,3,0.5))
         if legend != None:
             plt.legend(p, legend)    
-        plt.savefig("/home/azhari/temp/"+name+"_centroids_filter_C{}.png".format(c_filter), dpi=150, bbox_inches='tight')
+        plt.savefig("/home/azhari/temp2/"+name+"_centroids_filter_C{}.png".format(c_filter), dpi=150, bbox_inches='tight')
         
         #------------- clusters silhouette bar chart -------------------------------
         print("------------- clusters silhouette bar chart -------------------------------")
@@ -412,7 +416,7 @@ def show_sim_matrix_filter(sim, vmpid_list_orig, name, samples, cl, cl_filter, l
         #plt.xticks(np.arange(0,3,0.5))
         if legend != None:
             plt.legend(p, legend)    
-        plt.savefig("/home/azhari/temp/"+name+"_sil_filter_C{}.png".format(c_filter), dpi=150, bbox_inches='tight')
+        plt.savefig("/home/azhari/temp2/"+name+"_sil_filter_C{}.png".format(c_filter), dpi=150, bbox_inches='tight')
         
         #------------- clusters standard error bar chart -------------------------------
         print("------------- clusters standard error bar chart -------------------------------")
@@ -426,11 +430,11 @@ def show_sim_matrix_filter(sim, vmpid_list_orig, name, samples, cl, cl_filter, l
         #plt.xticks(np.arange(0,3,0.5))
         if legend != None:
             plt.legend(p, legend)    
-        plt.savefig("/home/azhari/temp/"+name+"_stderr_filter_C{}.png".format(c_filter), dpi=150, bbox_inches='tight')
+        plt.savefig("/home/azhari/temp2/"+name+"_stderr_filter_C{}.png".format(c_filter), dpi=150, bbox_inches='tight')
             
         #------------------ clusters membership text file --------------------------------            
         print("------------------ clusters membership text file --------------------------------")
-        with open("/home/azhari/temp/"+name+"_filter_C{}.clusters".format(c_filter),'w') as clF:
+        with open("/home/azhari/temp2/"+name+"_filter_C{}.clusters".format(c_filter),'w') as clF:
             if legend != None:
                 line = ''
                 for l in legend:
@@ -450,12 +454,17 @@ def kmeans_clustering(samples, inparams):
     print("kmeans_clustering_begin",samples.shape[0])
     n = min (inparams['n_clusters'], samples.shape[0]) #number of clusters never larger than number of samples
     cl = KMeans(n_clusters=n, init='k-means++', max_iter=300, n_init=100, random_state=None)
+    print("Fitting samples ...")    
     cl.fit(samples)
+    print("Computing sqare root of distance to centroids...")    
     d = [sqdist(samples.toarray()[i],cl.cluster_centers_[cl.labels_[i]]) for i in range(samples.shape[0])]
     c_sse = np.zeros(len(cl.cluster_centers_))
     c_n = np.zeros(len(cl.cluster_centers_)) #number of samples in each cluster
     cc = samples.toarray().mean(axis=0) #overall centroid
     ssb = 0
+
+    print("Computing clustering quality SSE, SSB, STDERR ...")    
+
     for i in range(samples.shape[0]):
         c_n[cl.labels_[i]] += 1 
     for c in range(len(cl.cluster_centers_)): #for all clusters
@@ -469,18 +478,23 @@ def kmeans_clustering(samples, inparams):
     #TODO compute point wise and overall silhouette coeff
     #print("labels:",len(cl.labels_), max(cl.labels_))
     #print("samples:",samples.shape)
+    print("Computing clustering quality Silhouette Factor ...")    
     s_sil = -1*np.ones(samples.shape[0]) #initialize to all negative (worst value)
     c_sil = -1*np.ones(n) #initialize to all negative (worst value)
     sil = -1
-    if (samples.shape[0] > n) and (max(cl.labels_) >= 1) : #if samples more than clusters and at least two clusters 
+    if (False) and (samples.shape[0] > n) and (max(cl.labels_) >= 1) : #if samples more than clusters and at least two clusters 
+        print("samples more than clusters and at least two clusters ...") 
         s_sil = silhouette_samples(samples.toarray(),cl.labels_)
-        #print("SILHOUTTE",s_sil)
+        print("TOTAL SILHOUTTE = ",s_sil)
+        print("Per Cluster Silhouette Factor ...")    
         for i in range(samples.shape[0]): #cluster silhouette
             c_sil[cl.labels_[i]] += s_sil[i]
         c_sil = [c_sil[i]/c_n[i] for i in range(n)]
         c_sil = np.array(c_sil)
         sil = silhouette_score(samples.toarray(),cl.labels_)
+        print(sil)
     outparams = {'sample silhouette':s_sil,'cluster silhouette':c_sil,'total silhouette':sil,'total ssb':ssb,'cluster size':c_n,'centroids':cl.cluster_centers_, 'total sse':cl.inertia_, 'cluster sse':c_sse, 'squared distance':d, 'cluster stderr':c_stderr}
+    #print(outparams)
     print("kmeans_clustering_end")
     return cl.labels_, outparams 
     
@@ -669,14 +683,14 @@ class Vectorizer(Command):
                     for tt in time_set:
                         traceName = tr + ':' + tt
                         #print(traceName) #sva for test
-                        procAvgFileName = path + '/' + tr + '/processAvgdur[' + tt + '].vector'
-                        procFreqFileName = path + '/' + tr + '/processFrequency[' + tt + '].vector'
-                        procPreemptionFileName = path + '/' + tr + '/processInternal[' + tt + '].vector'
-                        procExitFileName = path + '/' + tr + '/processExit[' + tt + '].vector'                    
-                        vcpuAvgFileName = path + '/' + tr + '/cpuAvgdur[' + tt + '].vector'
-                        vcpuFreqFileName = path + '/' + tr + '/cpuFrequency[' + tt + '].vector'
-                        vcpuPreemptionFileName = path + '/' + tr + '/cpuInternal[' + tt + '].vector'
-                        vcpuExitFileName = path + '/' + tr + '/cpuExit[' + tt + '].vector'                    
+                        procAvgFileName = path + '/' + tr + '/'+tr+'_requsts[' + tt + '].vector'
+                        procFreqFileName = path + '/' + tr + '/'+tr+'_requsts[' + tt + '].vector'
+                        procPreemptionFileName = procFreqFileName #path + '/' + tr + '/processInternal[' + tt + '].vector'
+                        procExitFileName = procFreqFileName #path + '/' + tr + '/processExit[' + tt + '].vector'                    
+                        vcpuAvgFileName = procAvgFileName #path + '/' + tr + '/cpuAvgdur[' + tt + '].vector'
+                        vcpuFreqFileName = procFreqFileName #path + '/' + tr + '/cpuFrequency[' + tt + '].vector'
+                        vcpuPreemptionFileName = procPreemptionFileName #path + '/' + tr + '/cpuInternal[' + tt + '].vector'
+                        vcpuExitFileName = procExitFileName #path + '/' + tr + '/cpuExit[' + tt + '].vector'                    
                         
                         with open(procAvgFileName,'r') as procAvgF,\
                              open(procFreqFileName,'r') as procFreqF,\
@@ -857,7 +871,7 @@ def get_random_data(n_samples, n_features, alg_list, args):
 
 #traceName is in this format: 'traceFileName:timestamp'
 def vectorize_proc(avgF,freqF,traceName,d,avgvec,fvec):
-    #print('vectorize_proc_begin:',traceName)
+    print('vectorize_proc_begin:',traceName)
     #avglines = avgF.readlines()
     freqlines = freqF.readlines()
     #avglines = [a.replace('\n','') for a in avglines]
@@ -881,7 +895,7 @@ def vectorize_proc(avgF,freqF,traceName,d,avgvec,fvec):
         f[7] = int(tmpd[vmpid][7]) #L0 preemption freq
         f[8] = int(tmpd[vmpid][8]) #L0 preemption freq
         fvec[vmpid] = f
-    #print('vectorize_proc_end:',traceName)          
+    print('vectorize_proc_end:',traceName)          
     return d, fvec  
 
 
@@ -890,51 +904,52 @@ def vectorize_proc(avgF,freqF,traceName,d,avgvec,fvec):
 #TODO use exectime of entry as new feature
 def vectorize_vcpu(avgF,freqF,preemptF,exitF,traceName,d,avgvec,fvec,prvec,exvec,traceTime):
     print('vectorize_vcpu_begin:',traceName)
-    avglines = avgF.readlines()
+     
+    #avglines = avgF.readlines()
     freqlines = freqF.readlines()
-    prlines = preemptF.readlines()
-    exlines = exitF.readlines()
-    avglines = [a.replace('\n','') for a in avglines]
+    #prlines = preemptF.readlines()
+    #exlines = exitF.readlines()
+    #avglines = [a.replace('\n','') for a in avglines]
     freqlines = [a.replace('\n','') for a in freqlines]
-    traceT = int(avglines[0]) #get total trace time from first line of Avgdur.vector
-    avglines = avglines[1:] #save the rest as average duration data
+    #traceT = int(freqlines[8]) #get total trace time from first line of Avgdur.vector
+    #avglines = avglines[1:] #save the rest as average duration data
        
-    if len(prlines) < len(avglines):
-        print("WARNING IN DATA: mismatch in number of entries",traceName)
+    #if len(prlines) < len(avglines):
+    #    print("WARNING IN DATA: mismatch in number of entries",traceName)
 
-    if len(prlines) == 0: # fix error in input .vector file when it is empty
-        prlines = [a.split(',')[0]+',0,0,0,0' for a in avglines]
-        print("Mismatch automatically fixed by adding all zero entries")
+    #if len(prlines) == 0: # fix error in input .vector file when it is empty
+    #    prlines = [a.split(',')[0]+',0,0,0,0' for a in avglines]
+    #    print("Mismatch automatically fixed by adding all zero entries")
 
-    prlines = [a.replace('\n','') for a in prlines]
-    exlines = [a.replace('\n','') for a in exlines]
+    #prlines = [a.replace('\n','') for a in prlines]
+    #exlines = [a.replace('\n','') for a in exlines]
 
     #create a dictionary with key = traceFileName:timestamp/VMID/VCPUID(or CR3 in case of proc) 
     #and values an array of (65) zeros to be later filled with exit counts
-    extmp={traceName+'/'+avglines[i].split(',')[0] : \
-        np.zeros(65) for i in range(0,len(freqlines))}
-    exvec.update(extmp)
+    #extmp={traceName+'/'+avglines[i].split(',')[0] : \
+    #    np.zeros(65) for i in range(0,len(freqlines))}
+    #exvec.update(extmp)
     #vectorize exit counts
-    for l in exlines: # l = VMID/vCPU(or CR3)/ExitNo,Count
-        vmvcpu = traceName + '/' + l[0:l.rfind('/')] # = VMID/vCPU (or CR3)
-        exno = int(l[l.rfind('/')+1:].split(',')[0]) # = ExitNo
-        cnt = int(l[l.rfind('/'):].split(',')[1]) # = Count
-        exvec[vmvcpu][exno] = cnt
+    #for l in exlines: # l = VMID/vCPU(or CR3)/ExitNo,Count
+    #    vmvcpu = traceName + '/' + l[0:l.rfind('/')] # = VMID/vCPU (or CR3)
+    #    exno = int(l[l.rfind('/')+1:].split(',')[0]) # = ExitNo
+    #    cnt = int(l[l.rfind('/'):].split(',')[1]) # = Count
+    #    exvec[vmvcpu][exno] = cnt
         
     #create a dictionary with key = traceFileName:timestamp/VMID/VCPUID( or CR3) and values the wait times and frequencies all in one list
     #FIXME assumes same order in fre/avg/preemption files (fragile but works)
-    tmpd={traceName+'/'+avglines[i].split(',')[0] : \
-        avglines[i].split(',')[1:] + freqlines[i].split(',')[1:] \
+    tmpd={traceName+'/'+freqlines[i].split(',')[0] : \
+        freqlines[i].split(',')[1:] \
         for i in range(0,len(freqlines))}
     
-    tmppr={ traceName+'/'+prlines[i].split(',')[0] : prlines[i].split(',')[1:] for i in range(len(prlines)) }
+    #tmppr={ traceName+'/'+prlines[i].split(',')[0] : prlines[i].split(',')[1:] for i in range(len(prlines)) }
     #print(tmppr)
 
-    for key in tmpd.keys():
-        if key in tmppr.keys():
-            tmpd[key] = tmpd[key] + tmppr[key]
-        else:
-            tmpd[key] = tmpd[key] + ['0', '0', '0', '0', '0', '0', '0', '0'] #insert all zero data in place of missing entries
+    #for key in tmpd.keys():
+    #    if key in tmppr.keys():
+    #        tmpd[key] = tmpd[key] + tmppr[key]
+    #    else:
+    #        tmpd[key] = tmpd[key] + ['0', '0', '0', '0', '0', '0', '0', '0'] #insert all zero data in place of missing entries
     #print(tmppr, tmpd)
     
     #print(tmpd)                   
@@ -943,42 +958,43 @@ def vectorize_vcpu(avgF,freqF,preemptF,exitF,traceName,d,avgvec,fvec,prvec,exvec
     #TODO consider possibility of dict to index various fields, e.g., f['timer']=int(tmpd[vmpid][8])          
     for vmvcpu in tmpd.keys():
         pr = np.zeros(8)
-        f = np.zeros(8)
+        f = np.zeros(9)
         avg = np.zeros(8)
 
-        avg[0] = int(tmpd[vmvcpu][0]) #timer avg
-        avg[1] = int(tmpd[vmvcpu][1]) 
-        avg[2] = int(tmpd[vmvcpu][2]) 
-        avg[3] = int(tmpd[vmvcpu][3]) 
-        avg[4] = int(tmpd[vmvcpu][4]) 
-        avg[5] = int(tmpd[vmvcpu][5]) 
-        avg[6] = int(tmpd[vmvcpu][6]) 
-        avg[7] = int(tmpd[vmvcpu][7]) #L0 preemption avg 
+        #avg[0] = int(tmpd[vmvcpu][0]) #timer avg
+        #avg[1] = int(tmpd[vmvcpu][1]) 
+        #avg[2] = int(tmpd[vmvcpu][2]) 
+        #avg[3] = int(tmpd[vmvcpu][3]) 
+        #avg[4] = int(tmpd[vmvcpu][4]) 
+        #avg[5] = int(tmpd[vmvcpu][5]) 
+        #avg[6] = int(tmpd[vmvcpu][6]) 
+        #avg[7] = int(tmpd[vmvcpu][7]) #L0 preemption avg 
 
-        f[0] = int(tmpd[vmvcpu][8]) #timer freq
-        f[1] = int(tmpd[vmvcpu][9])
-        f[2] = int(tmpd[vmvcpu][10])
-        f[3] = int(tmpd[vmvcpu][11])
-        f[4] = int(tmpd[vmvcpu][12])
-        f[5] = int(tmpd[vmvcpu][13])
-        f[6] = int(tmpd[vmvcpu][14])
-        f[7] = int(tmpd[vmvcpu][15]) #L0 preemption freq
-
-        pr[0] = int(tmpd[vmvcpu][16]) #VM/VM preemption freq
-        pr[1] = int(tmpd[vmvcpu][17]) #VM/Host preemption freq
-        pr[2] = int(tmpd[vmvcpu][18]) #In VM process preemption freq
-        pr[3] = int(tmpd[vmvcpu][19]) #In VM thread preemption freq
-        pr[4] = int(tmpd[vmvcpu][20]) #Inj_timer: when a timer interrupt is injected to process/VM
-        pr[5] = int(tmpd[vmvcpu][21]) #Inj_task: when a task interrupt is injected to process/VM
-        pr[6] = int(tmpd[vmvcpu][22]) #Inj_disk: when a disk interrupt is injected to process/VM
-        pr[7] = int(tmpd[vmvcpu][23]) #Inj_net: when a net interrupt is injected to process/VM
+        f[0] = int(tmpd[vmvcpu][0]) #timer freq
+        f[1] = int(tmpd[vmvcpu][1])
+        f[2] = int(tmpd[vmvcpu][2])
+        f[3] = int(tmpd[vmvcpu][3])
+        f[4] = int(tmpd[vmvcpu][4])
+        f[5] = int(tmpd[vmvcpu][5])
+        f[6] = int(tmpd[vmvcpu][6])
+        f[7] = int(tmpd[vmvcpu][7]) #L0 preemption freq
+        f[8] = int(tmpd[vmvcpu][8]) #L0 preemption freq
+        traceT = int(tmpd[vmvcpu][8])
+        #pr[0] = int(tmpd[vmvcpu][16]) #VM/VM preemption freq
+        #pr[1] = int(tmpd[vmvcpu][17]) #VM/Host preemption freq
+        #pr[2] = int(tmpd[vmvcpu][18]) #In VM process preemption freq
+        #pr[3] = int(tmpd[vmvcpu][19]) #In VM thread preemption freq
+        #pr[4] = int(tmpd[vmvcpu][20]) #Inj_timer: when a timer interrupt is injected to process/VM
+        #pr[5] = int(tmpd[vmvcpu][21]) #Inj_task: when a task interrupt is injected to process/VM
+        #pr[6] = int(tmpd[vmvcpu][22]) #Inj_disk: when a disk interrupt is injected to process/VM
+        #pr[7] = int(tmpd[vmvcpu][23]) #Inj_net: when a net interrupt is injected to process/VM
         
         traceTime[vmvcpu] = np.array([traceT]) #store as an array of size 1 to be consistent with other vectors
-        avgvec[vmvcpu] = avg
+        #avgvec[vmvcpu] = avg
         fvec[vmvcpu] = f
-        prvec[vmvcpu] = pr
+        #prvec[vmvcpu] = pr
     
-    #print('Avg Vector:',avgvec)    
+    #print('Freq Vector:',fvec,' duration= ',traceT)    
     #print('Freq Vector:',fvec)    
     #print('Preemption Vector:',prvec)    
         
@@ -1063,32 +1079,32 @@ def filter_samples(top_n, index_list, key_list, vec, sz):
 #            numpy.array holding samples indicated in |key_list| and reduced by 
 #            designated indices
 def create_vectors(key_list, vec_tuple, index_tuple, norm_type):
-    #print("create_vectors_begin",key_list, vec_tuple, index_tuple)
+    print("create_vectors_begin") #,key_list, vec_tuple, index_tuple)
     k = 0    
-    for it in index_tuple: #initialize samples with zero vectors
-        samples = np.zeros( (len(key_list), len(it)) )            
-        if len(it) > 0:
-            i = 0 #index of rows (samples)
-            vec = vec_tuple[k]
-            for key in key_list:
-                samples[i,:] = [ vec[key][j] for j in it ]
-                i += 1
-            #perform feature vector normalization
-            #TODO add option for no normalization
-            if samples.shape[1] == 1: #no normalization if only one feature available FIXME could cause problems in logic
-                norm_type = None
-            if i > 0: #at least one sample remains after filtering
-                transformer = TfidfTransformer(norm=norm_type, smooth_idf=False, sublinear_tf=False, use_idf=False)
-                samples = transformer.fit_transform(samples)
-                print("^^^^^^^^^^^^^")
-                samples = samples.toarray()
-        if k == 0:
-            sample_tuple = (samples,)              
-        else:
-            sample_tuple = sample_tuple.__add__( (samples,) )    
-        k = k+1
-        #end of for it ...
-    #print("create_vectors_end",key_list, sample_tuple)
+    it = index_tuple 
+    samples = np.zeros( (len(key_list), len(it)) ) #initialize samples with zero vectors
+    if len(it) > 0:
+        i = 0 #index of rows (samples)
+        vec = vec_tuple#[k]
+        for key in key_list:
+            samples[i,:] = [ vec[key][j] for j in it ]
+            i += 1
+        #perform feature vector normalization
+        #TODO add option for no normalization
+        if samples.shape[1] == 1: #no normalization if only one feature available FIXME could cause problems in logic
+            norm_type = None
+        if i > 0: #at least one sample remains after filtering
+            transformer = TfidfTransformer(norm=norm_type, smooth_idf=False, sublinear_tf=False, use_idf=False)
+            samples = transformer.fit_transform(samples)
+            print("^^^^^^^^^^^^^")
+            samples = samples.toarray()
+    if k == 0:
+        sample_tuple = (samples,)              
+    else:
+        sample_tuple = sample_tuple.__add__( (samples,) )    
+    k = k+1
+    #end of for it ...
+    print("create_vectors_end")#,key_list, sample_tuple)
     return sample_tuple
 
 # form aggregate sample matrix and re-normalize
@@ -1219,7 +1235,7 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_pr
             #rvec_pr_proc[vmpid] = 1000000000 * (prvec_proc[vmpid] / exec_time) #per nanosec to per sec
             #rvec_ex_proc[vmpid] = 1000000000 * (exvec_proc[vmpid] / exec_time) #per nanosec to per sec
      
-
+    print("===========")
     #if --rate is provided then obtain waiting rate instead of waiting frequency
     #waiting frequency is absolute total number of times the entity has waited during trace period    
     #waiting rate is number of times the entity has waited per second
@@ -1233,8 +1249,10 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_pr
             #rvec_ex_proc[vmpid] = exvec_proc[vmpid]
             #rvec_exec_proc[vmpid] = execvec_proc[vmpid]
 
-    
+    print("........")
     filtered_vmpid_list, fl_out = filter_samples(args.top, f_proc_index, list(vmpid_list), rvec_proc, max(index.values())+1 )
+    print("........")
+    
     #fl, fl_out = filter_samples(args.top, w_proc_index, fl_out, avgvec_proc, max(index.values())+1 )
     #filtered_vmpid_list = filtered_vmpid_list + fl
     #fl, fl_out = filter_samples(args.top, pr_proc_index, fl_out, rvec_pr_proc, max(prindex.values())+1 )
@@ -1250,10 +1268,11 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_pr
         create_vectors(\
             filtered_vmpid_list, \
             (rvec_proc), \
+            (f_proc_index), \
             args.norm \
             )
     
-        print("*********")
+    print("*********")
     
     if len(filtered_vmpid_list) == 0: #no samples made it through
         return None, None, None, None
@@ -1282,7 +1301,7 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_pr
                 show_sim_matrix(sim_proc, filtered_vmpid_list, 'Proc_'+alg[2], samples_proc, cl_proc[ alg[2] ])
 
     cl = cl_proc
-    
+    filtered_vm_list= []
     if (traceName == '') and (len(filtered_vm_list) != 0): #VM analysis only makes sense for aggregate of trace files
         cl_vm = {} #for cpuXXXX files, where we have already collapsed all vCPUs to get a VM view
         for alg in alg_list: 
@@ -1427,7 +1446,7 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_pr
             mi.Number
         ))
         i += 1
-    for w in w_proc_index:
+    for w in f_proc_index:
         col_infos.append((
             'c{}'.format(i),
             vectorizer._VECTOR_ORDER[w]+' Wait',
@@ -1442,7 +1461,8 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_pr
 #    table_class_vcpu = mi.TableClass(None, title_vcpu, col_infos_vcpu)
 #    result_table_vcpu = mi.ResultTable(table_class_vcpu, begin_ns, end_ns)
 
-    #populate rows
+    print("#populate rows")
+    return filtered_vmpid_list, cl, samples_proc, result_table, rvec_proc
     i=0
     samples_arr = samples_proc.toarray() #change from sparse matrix to numpy array so can be indexed properly       
     for vmpid in filtered_vmpid_list:#iterate over all VMID/PIDs
@@ -1463,12 +1483,12 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_pr
             s_sil = cl[ alg[2] ][1]['sample silhouette'][i]
             row_tuple.append( mi.Number( s_sil ) ) #add sample silhouette for this sample
                     
-        for col in range(len(f_proc_index)+len(w_proc_index)):
+        for col in range(len(f_proc_index)+len(f_proc_index)):
             row_tuple.append(mi.Number(samples_arr[i][col]))
         result_table.append_row_tuple(tuple(row_tuple))
         i += 1   
 
-    #add row containing clustering SSE 
+    print("#add row containing clustering SSE ")
     row_tuple = [
         mi.String('Total SSE'),
         mi.String('N/A'),
@@ -1479,11 +1499,11 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_pr
         row_tuple.append( mi.Number( 0 ) )
         row_tuple.append( mi.Number( 0 ) )
 
-    for col in range(len(f_proc_index)+len(w_proc_index)):
+    for col in range(len(f_proc_index)+len(f_proc_index)):
         row_tuple.append(mi.Number(0))
     result_table.append_row_tuple(tuple(row_tuple))
     
-    #add row containing clustering total SSB
+    print("#add row containing clustering total SSB")
     row_tuple = [
         mi.String('Total SSB'),
         mi.String('N/A'),
@@ -1494,11 +1514,11 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_pr
         row_tuple.append( mi.Number( 0 ) )
         row_tuple.append( mi.Number( 0 ) )
 
-    for col in range(len(f_proc_index)+len(w_proc_index)):
+    for col in range(len(f_proc_index)+len(f_proc_index)):
         row_tuple.append(mi.Number(0))
     result_table.append_row_tuple(tuple(row_tuple))
     
-    #add row containing clustering total silhouette
+    print("#add row containing clustering total silhouette")
     row_tuple = [
         mi.String('Total Silhouette'),
         mi.String('N/A'),
@@ -1509,8 +1529,9 @@ def get_clusters(vectorizer, traceName, d_proc, avgvec_proc, fvec_proc, prvec_pr
         row_tuple.append( mi.Number( 0 ) )
         row_tuple.append( mi.Number( 0 ) )
 
-    for col in range(len(f_proc_index)+len(w_proc_index)):
+    for col in range(len(f_proc_index)+len(f_proc_index)):
         row_tuple.append(mi.Number(0))
+    print("&&&&&&&&&&&&&")    
     result_table.append_row_tuple(tuple(row_tuple))
     #TODO: end refactor
     
